@@ -17,7 +17,7 @@ fn main() {
                 height,
                 width: height * RESOLUTION,
                 title: "Wave Sim".to_string(),
-                present_mode: PresentMode::Immediate,
+                present_mode: PresentMode::AutoVsync,
                 resizable: false,
                 ..default()
             },
