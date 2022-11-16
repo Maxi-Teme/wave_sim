@@ -10,10 +10,7 @@ use bevy_simple_tilemap::TileMap;
 
 use crate::finite_difference::sigmoid;
 use crate::SimulationGrid;
-use crate::CELLSIZE;
-use crate::DIMX;
-use crate::DIMY;
-use crate::FRAMES;
+use crate::SimulationParameters;
 
 #[derive(Resource)]
 struct AnimationTimer(Timer);
@@ -22,14 +19,22 @@ pub struct AnimationPlugin;
 
 impl Plugin for AnimationPlugin {
     fn build(&self, app: &mut bevy::prelude::App) {
-        app.add_startup_system(init_camera)
+        app.add_startup_system(init_timers)
+            .add_startup_system(init_camera)
             .add_startup_system(init_tiles)
-            .insert_resource(AnimationTimer(Timer::new(
-                Duration::from_millis(FRAMES),
-                TimerMode::Repeating,
-            )))
+            .insert_resource(AnimationTimer(Timer::default()))
             .add_system(update_tiles);
     }
+}
+
+fn init_timers(
+    mut animation_timer: ResMut<AnimationTimer>,
+    parameters: Res<SimulationParameters>,
+) {
+    animation_timer
+        .0
+        .set_duration(Duration::from_millis(parameters.frames_per_second));
+    animation_timer.0.set_mode(TimerMode::Repeating);
 }
 
 fn init_camera(mut commands: Commands) {
@@ -47,6 +52,7 @@ fn init_tiles(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     mut texture_atlases: ResMut<Assets<TextureAtlas>>,
+    parameters: Res<SimulationParameters>,
 ) {
     let texture_handle = asset_server.load("textures/tilesheet.png");
     let texture_atlas = TextureAtlas::from_grid(
@@ -59,30 +65,11 @@ fn init_tiles(
     );
     let texture_atlas_handle = texture_atlases.add(texture_atlas);
 
-    let mut tiles = Vec::new();
-
-    for x in 0..DIMX {
-        for y in 0..DIMY {
-            tiles.push((
-                ivec3(x.try_into().unwrap(), y.try_into().unwrap(), 0),
-                Some(Tile {
-                    sprite_index: 3,
-                    color: Color::WHITE,
-                    ..Default::default()
-                }),
-            ));
-        }
-    }
-
-    let mut tilemap = TileMap::default();
-    tilemap.set_tiles(tiles);
-
     let tilemap_bundle = TileMapBundle {
-        tilemap,
         texture_atlas: texture_atlas_handle,
         transform: Transform {
             translation: Vec3::new(0.0, 0.0, 0.0),
-            scale: Vec3::splat(CELLSIZE),
+            scale: Vec3::splat(parameters.cellsize),
             ..default()
         },
         ..default()
@@ -96,6 +83,7 @@ fn update_tiles(
     mut timer: ResMut<AnimationTimer>,
     u: Res<SimulationGrid>,
     mut tilemaps: Query<&mut TileMap>,
+    parameters: Res<SimulationParameters>,
 ) {
     if timer.0.tick(time.delta()).just_finished() {
         let mut tilemap = tilemaps.get_single_mut().unwrap();
@@ -103,8 +91,8 @@ fn update_tiles(
 
         let mut tiles = Vec::new();
 
-        for x in 0..DIMX {
-            for y in 0..DIMY {
+        for x in 0..parameters.dimx {
+            for y in 0..parameters.dimy {
                 let amplitude = u.0.get((0, x, y)).unwrap();
                 let r = sigmoid(amplitude, 0.8);
 

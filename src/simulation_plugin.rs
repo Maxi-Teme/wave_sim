@@ -7,45 +7,25 @@ use bevy_simple_tilemap::prelude::SimpleTileMapPlugin;
 use ndarray::prelude::*;
 use ndarray::Zip;
 
-use crate::SimulationGrid;
 use crate::finite_difference::update_with_absorbing_boundary;
 use crate::finite_difference::{
     update_with_laplace_operator_1, update_with_laplace_operator_4,
 };
-use crate::ABSORBING_BOUNDARY;
-use crate::AMPLITUDE;
-use crate::BOUNDARY;
-
-use crate::C;
-use crate::DIMX;
-use crate::DIMY;
-use crate::FRAMES;
-use crate::HS;
-use crate::PERIOD;
-use crate::TS;
-
+use crate::CommandClear;
+use crate::CommandStart;
+use crate::CommandStop;
+use crate::SimulationGrid;
+use crate::SimulationParameters;
 
 /// A field containing the factor for the Laplace Operator that
 /// combines Velocity and Grid Constants for the `Wave Equation`
-#[derive(Resource)]
+#[derive(Default, Resource)]
 struct Tau(Array2<f32>);
-
-impl Tau {
-    pub fn init() -> Self {
-        Self(Array::from_elem((DIMX, DIMY), ((C * TS) / HS).powi(2)))
-    }
-}
 
 /// A field containing the factor for the Laplace Operator that
 /// combines Velocity and Grid Constants for the `Boundary Condition`
-#[derive(Resource)]
+#[derive(Default, Resource)]
 struct Kappa(Array2<f32>);
-
-impl Kappa {
-    pub fn init() -> Self {
-        Self(Array2::from_elem((DIMX, DIMY), TS * C / HS))
-    }
-}
 
 #[derive(Resource)]
 struct SimulationTimer(Timer);
@@ -58,19 +38,15 @@ pub struct SimulationPlugin;
 impl Plugin for SimulationPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugin(SimpleTileMapPlugin)
-            .insert_resource(SimulationGrid::init())
-            .insert_resource(Tau::init())
-            .insert_resource(Kappa::init())
-            .insert_resource(SimulationTimer(Timer::new(
-                Duration::from_millis(FRAMES),
-                TimerMode::Repeating,
-            )))
-            .insert_resource(FrequencyTimer(Timer::new(
-                Duration::from_secs(PERIOD),
-                TimerMode::Repeating,
-            )))
+            .insert_resource(SimulationGrid::default())
+            .insert_resource(Tau::default())
+            .insert_resource(Kappa::default())
+            .insert_resource(SimulationTimer(Timer::default()))
+            .insert_resource(FrequencyTimer(Timer::default()))
+            .add_startup_system(init_resources)
             .add_system(apply_force)
-            .add_system(update_wave);
+            .add_system(update_wave)
+            .add_system(command_event_handler);
     }
 
     fn name(&self) -> &str {
@@ -82,16 +58,40 @@ impl Plugin for SimulationPlugin {
     }
 }
 
+fn init_resources(
+    mut tau: ResMut<Tau>,
+    mut kappa: ResMut<Kappa>,
+    mut u: ResMut<SimulationGrid>,
+    parameters: Res<SimulationParameters>,
+) {
+    tau.0 = Array::from_elem(
+        (parameters.dimx, parameters.dimy),
+        ((parameters.wave_velocity * parameters.time_step_width)
+            / parameters.spatial_step_width)
+            .powi(2),
+    );
+
+    kappa.0 = Array2::from_elem(
+        (parameters.dimx, parameters.dimy),
+        parameters.time_step_width * parameters.wave_velocity
+            / parameters.spatial_step_width,
+    );
+
+    u.0 = Array3::zeros((3, parameters.dimx, parameters.dimy));
+}
+
 fn apply_force(
     time: Res<Time>,
     mut timer: ResMut<SimulationTimer>,
     mut u: ResMut<SimulationGrid>,
+    parameters: Res<SimulationParameters>,
 ) {
     if timer.0.tick(time.delta()).just_finished() {
-        let init_x = (4 * DIMX / 6).try_into().unwrap();
-        let init_y = (4 * DIMY / 6).try_into().unwrap();
+        let init_x = (4 * parameters.dimx / 6).try_into().unwrap();
+        let init_y = (4 * parameters.dimy / 6).try_into().unwrap();
 
-        *u.0.get_mut((0, init_x, init_y)).unwrap() = AMPLITUDE;
+        *u.0.get_mut((0, init_x, init_y)).unwrap() =
+            parameters.applying_force_amplitude;
     }
 }
 
@@ -101,7 +101,10 @@ fn update_wave(
     mut u: ResMut<SimulationGrid>,
     tau: Res<Tau>,
     kappa: Res<Kappa>,
+    parameters: Res<SimulationParameters>,
 ) {
+    let boundary_size = parameters.boundary_size;
+
     if timer.0.tick(time.delta()).just_finished() {
         let (u_2, mut u_1, u_0) =
             u.0.multi_slice_mut((s![2, .., ..], s![1, .., ..], s![0, .., ..]));
@@ -114,27 +117,74 @@ fn update_wave(
             .and(u_0)
             .for_each(|u_1, u_0| std::mem::swap(u_1, u_0));
 
-        let new_u = if BOUNDARY == 1 {
-            update_with_laplace_operator_1(DIMX, DIMY, &tau.0, &u.0)
-        } else if BOUNDARY == 4 {
-            update_with_laplace_operator_4(DIMX, DIMY, &tau.0, &u.0)
+        let new_u = if boundary_size == 1 {
+            update_with_laplace_operator_1(
+                parameters.dimx,
+                parameters.dimy,
+                &tau.0,
+                &u.0,
+            )
+        } else if boundary_size == 4 {
+            update_with_laplace_operator_4(
+                parameters.dimx,
+                parameters.dimy,
+                &tau.0,
+                &u.0,
+            )
         } else {
-            todo!("BOUNDARY of size {}", BOUNDARY);
+            todo!("boundary_size of size {}", boundary_size);
         };
 
         u.0.slice_mut(s![
             0,
-            BOUNDARY..(DIMX - BOUNDARY),
-            BOUNDARY..(DIMY - BOUNDARY)
+            boundary_size..(parameters.dimx - boundary_size),
+            boundary_size..(parameters.dimy - boundary_size)
         ])
         .assign(&new_u);
 
-        if ABSORBING_BOUNDARY {
+        if parameters.use_absorbing_boundary {
             update_with_absorbing_boundary(
-                DIMX, DIMY, BOUNDARY, &kappa.0, &mut u.0,
+                parameters.dimx,
+                parameters.dimy,
+                boundary_size,
+                &kappa.0,
+                &mut u.0,
             );
         } else {
             u.0.mapv_inplace(|u| u * 0.995);
         }
+    }
+}
+
+fn command_event_handler(
+    mut start_events: EventReader<CommandStart>,
+    mut stop_events: EventReader<CommandStop>,
+    mut clear_events: EventReader<CommandClear>,
+    parameters: Res<SimulationParameters>,
+    mut u: ResMut<SimulationGrid>,
+    mut simulation_timer: ResMut<SimulationTimer>,
+    mut frequency_timer: ResMut<FrequencyTimer>,
+) {
+    for _ in start_events.iter() {
+        simulation_timer
+            .0
+            .set_duration(Duration::from_millis(parameters.frames_per_second));
+        simulation_timer.0.set_mode(TimerMode::Repeating);
+        simulation_timer.0.unpause();
+
+        frequency_timer
+            .0
+            .set_duration(Duration::from_secs(parameters.wave_period));
+        frequency_timer.0.set_mode(TimerMode::Repeating);
+        frequency_timer.0.unpause();
+    }
+
+    for _ in stop_events.iter() {
+        simulation_timer.0.pause();
+        simulation_timer.0.pause();
+    }
+
+    for _ in clear_events.iter() {
+        u.0 = Array3::zeros((3, parameters.dimx, parameters.dimy));
     }
 }
