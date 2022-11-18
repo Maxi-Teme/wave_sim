@@ -3,7 +3,7 @@ use std::f32::consts::E;
 use ndarray::prelude::*;
 use ndarray::ViewRepr;
 
-pub fn sigmoid(x: &f32, stretch: f32) -> f32 {
+pub fn _sigmoid(x: &f32, stretch: f32) -> f32 {
     1.0 / (1.0 + E.powf(-(x / stretch)))
 }
 
@@ -114,9 +114,9 @@ pub fn update_with_absorbing_boundary(
 
     let boundary = (kappa.slice(s![1..dimx1, 0..sz]).mapv(|k| k - 1.0)
         / kappa.slice(s![1..dimx1, 0..sz]).mapv(|k| k + 1.0))
-        * (&u.slice(s![0, 1..dimx1, 0 + 1..sz_p1])
+        * (&u.slice(s![0, 1..dimx1, 1..sz_p1])
             - &u.slice(s![1, 1..dimx1, 0..sz]))
-        + u.slice(s![1, 1..dimx1, 0 + 1..sz_p1]);
+        + u.slice(s![1, 1..dimx1, 0..sz_p1]);
 
     u.slice_mut(s![0, 1..dimx1, 0..sz]).assign(&boundary);
 }

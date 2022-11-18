@@ -1,17 +1,18 @@
 use std::time::Duration;
 
+use bevy::diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin};
 use bevy::prelude::*;
-
-mod animation_plugin;
-mod finite_difference;
-mod simulation_plugin;
-
 use bevy::window::PresentMode;
-
-use animation_plugin::AnimationPlugin;
 use bevy_inspector_egui::widgets::InspectableButton;
 use bevy_inspector_egui::{Inspectable, InspectorPlugin};
 use ndarray::{s, Array3};
+
+mod animation_plugin;
+mod colored_mesh;
+mod finite_difference;
+mod simulation_plugin;
+
+use animation_plugin::AnimationPlugin;
 use simulation_plugin::SimulationPlugin;
 
 pub const RESOLUTION: f32 = 16.0 / 9.0;
@@ -27,45 +28,59 @@ pub struct CommandClear;
 
 #[derive(Resource, Inspectable)]
 pub struct SimulationParameters {
-    pub frames_per_second: u64,
+    #[inspectable(read_only)]
     pub spatial_step_width: f32,
+    #[inspectable(read_only)]
     pub time_step_width: f32,
-    #[inspectable(min = 16, max = 1600)]
+    #[inspectable(read_only)]
     pub dimx: usize,
-    #[inspectable(min = 9, max = 900)]
+    #[inspectable(read_only)]
     pub dimy: usize,
-    #[inspectable(min = 0.01, max = 1.0)]
+    #[inspectable(read_only)]
     pub cellsize: f32,
+    #[inspectable(read_only)]
     pub wave_period: u64,
+    #[inspectable(read_only)]
     pub wave_velocity: f32,
+    #[inspectable(read_only)]
     pub boundary_size: usize,
+
     pub use_absorbing_boundary: bool,
-    pub applying_force_amplitude: f32,
-    #[inspectable(label = "", text = "Start")]
-    pub command_start: InspectableButton<CommandStart>,
-    #[inspectable(label = "", text = "Stop")]
-    pub command_stop: InspectableButton<CommandStop>,
-    #[inspectable(label = "", text = "Clear")]
-    pub command_clear: InspectableButton<CommandClear>,
+    #[inspectable(
+        label = "amplitude of applied force",
+        min = 0.1,
+        max = 1000.0
+    )]
+    pub applied_force_amplitude: f32,
+    #[inspectable(label = "frequency of applied force in Hz", min = 0.0)]
+    pub applied_force_frequency_hz: f32,
+    #[inspectable(label = "start / restart applied force", text = "Start")]
+    pub applied_force_start_restart: InspectableButton<CommandStart>,
+    #[inspectable(label = "stop applied force", text = "Stop")]
+    pub applied_force_stop: InspectableButton<CommandStop>,
+    #[inspectable(label = "reset all forces", text = "Clear")]
+    pub clear_all_forces: InspectableButton<CommandClear>,
 }
 
 impl Default for SimulationParameters {
     fn default() -> Self {
         Self {
-            frames_per_second: 36,
             spatial_step_width: 1.0,
             time_step_width: 1.0,
-            dimx: 320,
-            dimy: 180,
-            cellsize: 0.2,
+            dimx: 160 * 2,
+            dimy: 90 * 2,
+            cellsize: 4.0,
             wave_period: 1,
-            wave_velocity: 0.5,
-            boundary_size: 1,
+            wave_velocity: 0.3,
+            boundary_size: 4,
+
             use_absorbing_boundary: false,
-            applying_force_amplitude: 10.0,
-            command_start: InspectableButton::<CommandStart>::default(),
-            command_stop: InspectableButton::<CommandStop>::default(),
-            command_clear: InspectableButton::<CommandClear>::default(),
+            applied_force_amplitude: 5.0,
+            applied_force_frequency_hz: 4.0,
+            applied_force_start_restart:
+                InspectableButton::<CommandStart>::default(),
+            applied_force_stop: InspectableButton::<CommandStop>::default(),
+            clear_all_forces: InspectableButton::<CommandClear>::default(),
         }
     }
 }
@@ -86,7 +101,6 @@ fn main() {
                 width: height * RESOLUTION,
                 title: "Wave Sim".to_string(),
                 present_mode: PresentMode::AutoVsync,
-                resizable: false,
                 ..default()
             },
             ..default()
@@ -94,12 +108,19 @@ fn main() {
         .add_plugin(InspectorPlugin::<SimulationParameters>::new())
         .add_plugin(SimulationPlugin)
         .add_plugin(AnimationPlugin)
+        .add_plugin(LogDiagnosticsPlugin::default())
+        .add_plugin(FrameTimeDiagnosticsPlugin::default())
         .insert_resource(DebugTimer(Timer::new(
             Duration::from_secs(1),
             TimerMode::Repeating,
         )))
+        .add_startup_system(init_camera)
         .add_system(debug_system)
         .run();
+}
+
+fn init_camera(mut commands: Commands) {
+    commands.spawn(Camera2dBundle::default());
 }
 
 fn debug_system(
