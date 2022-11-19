@@ -7,7 +7,7 @@ pub struct SimulationPlugin;
 impl Plugin for SimulationPlugin {
     fn build(&self, app: &mut App) {
         app.add_system_set(
-            SystemSet::on_enter(AppState::Particle3dSimulation)
+            SystemSet::on_enter(AppState::LongitudinalWaveSimulation3d)
                 .with_system(setup),
         );
     }

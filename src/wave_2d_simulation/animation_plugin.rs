@@ -13,7 +13,9 @@ use super::SimulationGrid;
 use super::SimulationParameters;
 use crate::colored_mesh::ColoredMesh2d;
 use crate::colored_mesh::ColoredMesh2dPlugin;
+use crate::AppCamera;
 use crate::AppState;
+use crate::UiCamera;
 
 const VERTEX_ATTRIBUTE_COLOR_ID: MeshVertexAttribute =
     MeshVertexAttribute::new("Vertex_Color", 1, VertexFormat::Uint32);
@@ -52,7 +54,11 @@ fn setup(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     parameters: Res<SimulationParameters>,
+    cameras: Query<Entity, (With<AppCamera>, Without<UiCamera>)>,
+    mut mouse_button: ResMut<Input<MouseButton>>,
 ) {
+    mouse_button.reset_all();
+
     let dimx: u32 = (parameters.dimx - 1).try_into().unwrap();
     let dimy: u32 = (parameters.dimy - 1).try_into().unwrap();
 
@@ -63,7 +69,7 @@ fn setup(
     let mut v_color: Vec<u32> =
         Vec::with_capacity(parameters.dimx * parameters.dimy);
 
-    let mut count: u32 = 0;
+    let white = Color::WHITE.as_linear_rgba_u32();
 
     for x in 0..=dimx {
         for y in 0..=dimy {
@@ -73,13 +79,7 @@ fn setup(
             v_pos.push([scaled_x, scaled_y, 0.0]);
 
             // color of vertices
-            if count % 2 == 0 {
-                v_color.push(Color::WHITE.as_linear_rgba_u32());
-            } else {
-                v_color.push(Color::DARK_GRAY.as_linear_rgba_u32());
-            }
-
-            count += 1;
+            v_color.push(white);
         }
     }
 
@@ -125,6 +125,12 @@ fn setup(
             global_transform: GlobalTransform::IDENTITY,
         },
     ));
+
+    if let Ok(camera_entity) = cameras.get_single() {
+        commands.entity(camera_entity).despawn();
+    }
+
+    commands.spawn((AppCamera, Camera2dBundle::default()));
 }
 
 fn update_mesh(
@@ -133,10 +139,11 @@ fn update_mesh(
     mut meshes: ResMut<Assets<Mesh>>,
 ) {
     for (_, mesh) in meshes.iter_mut() {
-        let vertex_attribute =
-            mesh.attribute_mut(VERTEX_ATTRIBUTE_COLOR_ID).unwrap();
+        let vertex_attribute = mesh.attribute_mut(VERTEX_ATTRIBUTE_COLOR_ID);
 
-        if let VertexAttributeValues::Uint32(color_vector) = vertex_attribute {
+        if let Some(VertexAttributeValues::Uint32(color_vector)) =
+            vertex_attribute
+        {
             *color_vector = get_color_vector(&parameters, &u.0);
         }
     }
@@ -173,7 +180,10 @@ fn get_smooth_color_by_amplitude(amplitude: f32) -> u32 {
 
 fn mouse_event_handler(
     windows: Res<Windows>,
-    cameras: Query<(&Camera, &GlobalTransform)>,
+    cameras: Query<
+        (&Camera, &GlobalTransform),
+        (With<AppCamera>, Without<UiCamera>),
+    >,
     buttons: Res<Input<MouseButton>>,
     plots: Query<&Transform, With<Plot>>,
     parameters: Res<SimulationParameters>,

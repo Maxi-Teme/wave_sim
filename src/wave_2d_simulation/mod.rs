@@ -31,8 +31,8 @@ impl Default for SimulationParameters {
         Self {
             spatial_step_width: 1.0,
             time_step_width: 1.0,
-            dimx: 160,
-            dimy: 90,
+            dimx: 160 * 2,
+            dimy: 90 * 2,
             cellsize: 2.7,
             wave_period: 1,
             wave_velocity: 0.4,

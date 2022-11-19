@@ -46,14 +46,6 @@ impl Plugin for SimulationPlugin {
                     .with_system(update_wave),
             );
     }
-
-    fn name(&self) -> &str {
-        std::any::type_name::<Self>()
-    }
-
-    fn is_unique(&self) -> bool {
-        true
-    }
 }
 
 fn setup(

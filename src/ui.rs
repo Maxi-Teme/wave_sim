@@ -39,10 +39,7 @@ impl UiParameters {
             arrow_down_icon,
             button_color: Color::rgb(0.15, 0.15, 0.15).into(),
             hovered_button_color: Color::rgb(0.25, 0.25, 0.25).into(),
-            simulations: vec![
-                "wave_2d_simulation".into(),
-                "particle_3d_simulation".into(),
-            ],
+            simulations: AppState::all_as_string(),
         }
     }
 }
@@ -81,10 +78,10 @@ fn setup(
     ui_parameters: Res<UiParameters>,
     app_state: Res<State<AppState>>,
 ) {
-    commands.spawn(Camera2dBundle::default());
-
     commands
         .spawn(NodeBundle {
+            transform: Transform::from_xyz(0.0, 0.0, 900.0),
+            background_color: Color::NONE.into(),
             style: Style {
                 size: Size::new(Val::Percent(100.0), Val::Percent(100.0)),
                 justify_content: JustifyContent::SpaceBetween,
@@ -203,6 +200,7 @@ fn setup_side_panel(
                         .with_style(Style {
                             margin: UiRect {
                                 left: Val::Px(14.0),
+                                top: Val::Px(14.0),
                                 bottom: Val::Px(4.0),
                                 ..default()
                             },
