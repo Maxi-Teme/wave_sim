@@ -9,10 +9,11 @@ use bevy::render::render_resource::VertexFormat;
 use bevy::sprite::Mesh2dHandle;
 use ndarray::Array3;
 
+use super::SimulationGrid;
+use super::SimulationParameters;
 use crate::colored_mesh::ColoredMesh2d;
 use crate::colored_mesh::ColoredMesh2dPlugin;
-use crate::SimulationGrid;
-use crate::SimulationParameters;
+use crate::AppState;
 
 const VERTEX_ATTRIBUTE_COLOR_ID: MeshVertexAttribute =
     MeshVertexAttribute::new("Vertex_Color", 1, VertexFormat::Uint32);
@@ -31,13 +32,23 @@ impl Plugin for AnimationPlugin {
     fn build(&self, app: &mut bevy::prelude::App) {
         app.add_plugin(ColoredMesh2dPlugin)
             .add_event::<PlotClickedEvent>()
-            .add_startup_system(init_mesh)
-            .add_system(update_mesh)
-            .add_system(mouse_event_handler);
+            .add_system_set(
+                SystemSet::on_enter(AppState::Wave2dSimulation)
+                    .with_system(setup),
+            )
+            .add_system_set(
+                SystemSet::on_update(AppState::Wave2dSimulation)
+                    .with_system(update_mesh)
+                    .with_system(mouse_event_handler),
+            )
+            .add_system_set(
+                SystemSet::on_exit(AppState::Wave2dSimulation)
+                    .with_system(cleanup),
+            );
     }
 }
 
-fn init_mesh(
+fn setup(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     parameters: Res<SimulationParameters>,
@@ -82,12 +93,9 @@ fn init_mesh(
     for c in 0..dimx {
         for r in 0..dimy {
             let i = c * (dimy + 1) + r;
+
             let r_ru_triangle = [i, i + dimy + 1, i + dimy + 2]; // right and right up triangle
-
             let ru_u_triangle = [i, i + dimy + 2, i + 1]; // right up and up triagle
-
-            info!("{:?}", r_ru_triangle);
-            info!("{:?}", ru_u_triangle);
 
             indices.extend_from_slice(&r_ru_triangle);
             indices.extend_from_slice(&ru_u_triangle);
@@ -99,8 +107,8 @@ fn init_mesh(
     let dimx_shift: f32 = -(dimx as f32) * parameters.cellsize / 2.0;
     let dimy_shift: f32 = -(dimy as f32) * parameters.cellsize / 2.0;
 
-    info!("{:?}", dimx_shift);
-    info!("{:?}", dimy_shift);
+    // info!("{:?}", dimx_shift);
+    // info!("{:?}", dimy_shift);
 
     commands.spawn((
         Plot,
@@ -117,13 +125,6 @@ fn init_mesh(
             global_transform: GlobalTransform::IDENTITY,
         },
     ));
-
-    info!("0.0: {}", Color::rgb(0.0, 0.0, 0.0).as_linear_rgba_u32());
-    info!("0.2: {}", Color::rgb(0.2, 0.2, 0.2).as_linear_rgba_u32());
-    info!("0.4: {}", Color::rgb(0.4, 0.4, 0.4).as_linear_rgba_u32());
-    info!("0.6: {}", Color::rgb(0.6, 0.6, 0.6).as_linear_rgba_u32());
-    info!("0.8: {}", Color::rgb(0.8, 0.8, 0.8).as_linear_rgba_u32());
-    info!("1.0: {}", Color::rgb(1.0, 1.0, 1.0).as_linear_rgba_u32());
 }
 
 fn update_mesh(
@@ -196,16 +197,17 @@ fn mouse_event_handler(
                 let plot_y = (world_position.y - plot_transform.translation.y)
                     / parameters.cellsize;
 
-                info!(
-                    "World coordinates: {}/{}\nPlot coordinates: {}/{}",
-                    world_position.x, world_position.y, plot_x, plot_y,
-                );
-
                 event.send(PlotClickedEvent {
                     x: plot_x,
                     y: plot_y,
                 });
             }
         }
+    }
+}
+
+fn cleanup(mut commands: Commands, plots: Query<Entity, With<Plot>>) {
+    for plot in plots.iter() {
+        commands.entity(plot).despawn();
     }
 }

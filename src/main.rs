@@ -1,142 +1,272 @@
-use std::time::Duration;
-
-use bevy::diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin};
+use bevy::diagnostic::FrameTimeDiagnosticsPlugin;
 use bevy::prelude::*;
 use bevy::window::PresentMode;
-use bevy_inspector_egui::widgets::InspectableButton;
-use bevy_inspector_egui::{Inspectable, InspectorPlugin};
-use ndarray::{s, Array3};
 
-mod animation_plugin;
 mod colored_mesh;
-mod finite_difference;
-mod simulation_plugin;
+mod wave_2d_simulation;
 
-use animation_plugin::AnimationPlugin;
-use simulation_plugin::SimulationPlugin;
+use wave_2d_simulation::Wave2dSimulationPlugin;
 
 pub const RESOLUTION: f32 = 16.0 / 9.0;
 
-#[derive(Default, Component)]
-pub struct CommandStart;
+const UI_BACKGROUND_COLOR: Color = Color::rgba(0.10, 0.10, 0.10, 0.9);
+const NORMAL_BUTTON: Color = Color::rgb(0.15, 0.15, 0.15);
+const HOVERED_BUTTON: Color = Color::rgb(0.25, 0.25, 0.25);
 
-#[derive(Default, Component)]
-pub struct CommandStop;
+const SIMULATIONS: [&str; 2] = ["wave_2d_simulation", "particle_3d_simulation"];
 
-#[derive(Default, Component)]
-pub struct CommandClear;
-
-#[derive(Resource, Inspectable)]
-pub struct SimulationParameters {
-    #[inspectable(read_only)]
-    pub spatial_step_width: f32,
-    #[inspectable(read_only)]
-    pub time_step_width: f32,
-    #[inspectable(read_only)]
-    pub dimx: usize,
-    #[inspectable(read_only)]
-    pub dimy: usize,
-    #[inspectable(read_only)]
-    pub cellsize: f32,
-    #[inspectable(read_only)]
-    pub wave_period: u64,
-    #[inspectable(read_only)]
-    pub wave_velocity: f32,
-    #[inspectable(read_only)]
-    pub boundary_size: usize,
-
-    pub use_absorbing_boundary: bool,
-    #[inspectable(
-        label = "amplitude of applied force",
-        min = 0.1,
-        max = 1000.0
-    )]
-    pub applied_force_amplitude: f32,
-    #[inspectable(label = "frequency of applied force in Hz", min = 0.0)]
-    pub applied_force_frequency_hz: f32,
-    #[inspectable(label = "start / restart applied force", text = "Start")]
-    pub applied_force_start_restart: InspectableButton<CommandStart>,
-    #[inspectable(label = "stop applied force", text = "Stop")]
-    pub applied_force_stop: InspectableButton<CommandStop>,
-    #[inspectable(label = "reset all forces", text = "Clear")]
-    pub clear_all_forces: InspectableButton<CommandClear>,
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum AppState {
+    Wave2dSimulation,
+    Particle3dSimulation,
 }
-
-impl Default for SimulationParameters {
-    fn default() -> Self {
-        Self {
-            spatial_step_width: 1.0,
-            time_step_width: 1.0,
-            dimx: 160 * 2,
-            dimy: 90 * 2,
-            cellsize: 4.0,
-            wave_period: 1,
-            wave_velocity: 0.3,
-            boundary_size: 4,
-
-            use_absorbing_boundary: false,
-            applied_force_amplitude: 5.0,
-            applied_force_frequency_hz: 4.0,
-            applied_force_start_restart:
-                InspectableButton::<CommandStart>::default(),
-            applied_force_stop: InspectableButton::<CommandStop>::default(),
-            clear_all_forces: InspectableButton::<CommandClear>::default(),
-        }
-    }
-}
-
-#[derive(Default, Resource)]
-pub struct SimulationGrid(Array3<f32>);
-
-#[derive(Resource)]
-struct DebugTimer(Timer);
 
 fn main() {
     let height = 900.0;
 
     App::new()
+        // main plugins
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             window: WindowDescriptor {
                 height,
                 width: height * RESOLUTION,
-                title: "Wave Sim".to_string(),
+                title: "wave_sim".to_string(),
                 present_mode: PresentMode::AutoVsync,
                 ..default()
             },
             ..default()
         }))
-        .add_plugin(InspectorPlugin::<SimulationParameters>::new())
-        .add_plugin(SimulationPlugin)
-        .add_plugin(AnimationPlugin)
-        .add_plugin(LogDiagnosticsPlugin::default())
+        .insert_resource(Msaa { samples: 1 })
+        .add_state(AppState::Wave2dSimulation)
         .add_plugin(FrameTimeDiagnosticsPlugin::default())
-        .insert_resource(DebugTimer(Timer::new(
-            Duration::from_secs(1),
-            TimerMode::Repeating,
-        )))
-        .add_startup_system(init_camera)
-        .add_system(debug_system)
+        // simulation plugins
+        .add_plugin(Wave2dSimulationPlugin)
+        // main systems
+        .add_startup_system(setup)
+        .add_system(handle_simulation_selection_buttons)
         .run();
 }
 
-fn init_camera(mut commands: Commands) {
+fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     commands.spawn(Camera2dBundle::default());
-}
 
-fn debug_system(
-    time: Res<Time>,
-    mut timer: ResMut<DebugTimer>,
-    u: Res<SimulationGrid>,
-) {
-    if timer.0.tick(time.delta()).just_finished() {
-        let size = u.0.slice(s![0, .., ..]).len();
-        let (max_u, min_u) =
-            u.0.slice(s![0, .., ..])
-                .fold((f32::MIN, f32::MAX), |(acc_max, acc_min), u| {
-                    (u.max(acc_max), u.min(acc_min))
+    let default_medium_font = asset_server.load("fonts/FiraMono-Medium.ttf");
+    let default_bold_font = asset_server.load("fonts/FiraSans-Bold.ttf");
+
+    commands
+        .spawn(NodeBundle {
+            style: Style {
+                size: Size::new(Val::Percent(100.0), Val::Percent(100.0)),
+                justify_content: JustifyContent::SpaceBetween,
+                ..default()
+            },
+            ..default()
+        })
+        .with_children(|parent| {
+            // side panel right
+            parent
+                .spawn(NodeBundle {
+                    style: Style {
+                        size: Size::new(Val::Px(300.0), Val::Percent(100.0)),
+                        border: UiRect::all(Val::Px(1.0)),
+                        flex_direction: FlexDirection::Column,
+                        justify_content: JustifyContent::FlexStart,
+                        ..default()
+                    },
+                    background_color: UI_BACKGROUND_COLOR.into(),
+                    ..default()
+                })
+                .with_children(|parent| {
+                    // sidebar title
+                    parent
+                        .spawn(NodeBundle {
+                            style: Style {
+                                size: Size::new(
+                                    Val::Percent(100.0),
+                                    Val::Px(20.0),
+                                ),
+                                margin: UiRect {
+                                    bottom: Val::Px(50.0),
+                                    ..default()
+                                },
+                                ..default()
+                            },
+                            ..default()
+                        })
+                        .with_children(|parent| {
+                            parent.spawn(
+                                TextBundle::from_section(
+                                    "wave_sim",
+                                    TextStyle {
+                                        font: default_bold_font,
+                                        font_size: 30.0,
+                                        color: Color::WHITE,
+                                    },
+                                )
+                                .with_style(
+                                    Style {
+                                        margin: UiRect {
+                                            left: Val::Px(10.0),
+                                            top: Val::Px(10.0),
+                                            ..default()
+                                        },
+                                        ..default()
+                                    },
+                                ),
+                            );
+                        });
+
+                    // sidebar items
+                    parent
+                        .spawn(NodeBundle {
+                            style: Style {
+                                size: Size::new(
+                                    Val::Percent(100.0),
+                                    Val::Percent(100.0),
+                                ),
+                                flex_direction: FlexDirection::Column,
+                                justify_content: JustifyContent::FlexStart,
+                                ..default()
+                            },
+                            ..default()
+                        })
+                        .with_children(|parent| {
+                            parent.spawn(
+                                TextBundle::from_section(
+                                    "Simulations:",
+                                    TextStyle {
+                                        font: default_medium_font.clone(),
+                                        font_size: 24.0,
+                                        color: Color::WHITE,
+                                    },
+                                )
+                                .with_style(
+                                    Style {
+                                        margin: UiRect {
+                                            left: Val::Px(14.0),
+                                            bottom: Val::Px(4.0),
+                                            ..default()
+                                        },
+                                        ..default()
+                                    },
+                                ),
+                            );
+
+                            parent.spawn(
+                                NodeBundle {
+                                    style: Style {
+                                        size: Size::new(Val::Percent(100.0), Val::Percent(100.0)),
+                                        flex_direction: FlexDirection::Column,
+                                        justify_content: JustifyContent::FlexStart,
+                                        align_items: AlignItems::FlexStart,
+                                        ..default()
+                                    },
+                                    ..default()
+                                }
+                            ).with_children(|parent| {
+                                for simulation in SIMULATIONS {
+                                    parent
+                                        .spawn(ButtonBundle {
+                                            style: Style {
+                                                margin: UiRect::new(
+                                                    Val::Auto,
+                                                    Val::Auto,
+                                                    Val::Undefined,
+                                                    Val::Px(4.0),
+                                                ),
+                                                justify_content:
+                                                    JustifyContent::Center,
+                                                align_items: AlignItems::Center,
+                                                ..default()
+                                            },
+                                            background_color: NORMAL_BUTTON
+                                                .into(),
+                                            ..default()
+                                        })
+                                        .with_children(|parent| {
+                                            parent.spawn(
+                                                TextBundle::from_section(
+                                                    simulation,
+                                                    TextStyle {
+                                                        font: default_medium_font
+                                                            .clone(),
+                                                        font_size: 18.0,
+                                                        color: Color::WHITE,
+                                                    },
+                                                )
+                                                .with_style(Style {
+                                                    margin: UiRect::all(Val::Px(10.0)),
+                                                    ..default()
+                                                }),
+                                            );
+                                        });
+                                }
+                            });
+                        });
                 });
 
-        info!("GRID ITEM COUNT: {}", size);
-        info!("MAXIMUM U: {} MINIMUM: {}", max_u, min_u);
+            // rest of the window right
+            parent
+                .spawn(NodeBundle {
+                    style: Style {
+                        size: Size::new(
+                            Val::Percent(100.0),
+                            Val::Percent(100.0),
+                        ),
+                        ..default()
+                    },
+                    ..default()
+                })
+                .with_children(|parent| {
+                    // header bar
+                    parent.spawn(NodeBundle {
+                        style: Style {
+                            size: Size::new(Val::Percent(100.0), Val::Px(40.0)),
+                            border: UiRect::all(Val::Px(1.0)),
+                            ..default()
+                        },
+                        background_color: UI_BACKGROUND_COLOR.into(),
+                        ..default()
+                    });
+                });
+        });
+}
+
+#[allow(clippy::type_complexity)]
+fn handle_simulation_selection_buttons(
+    mut app_state: ResMut<State<AppState>>,
+    mut interaction_query: Query<
+        (&Interaction, &mut BackgroundColor, &Children),
+        (Changed<Interaction>, With<Button>),
+    >,
+    text_query: Query<&Text>,
+) {
+    for (interaction, mut color, children) in &mut interaction_query {
+        match *interaction {
+            Interaction::Hovered => {
+                *color = HOVERED_BUTTON.into();
+            }
+            Interaction::None => {
+                *color = NORMAL_BUTTON.into();
+            }
+            Interaction::Clicked => {
+                *color = NORMAL_BUTTON.into();
+
+                let text = text_query.get(children[0]).unwrap();
+                let clicked_simulation = text.sections[0].value.clone();
+
+                if clicked_simulation == SIMULATIONS[0]
+                    && *app_state.current() != AppState::Wave2dSimulation
+                {
+                    app_state.set(AppState::Wave2dSimulation).unwrap();
+                }
+
+                if clicked_simulation == SIMULATIONS[1]
+                    && *app_state.current() != AppState::Particle3dSimulation
+                {
+                    app_state.set(AppState::Particle3dSimulation).unwrap();
+                }
+            }
+        }
     }
 }

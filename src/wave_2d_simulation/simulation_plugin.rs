@@ -1,21 +1,16 @@
-// curtesy of https://beltoforion.de/en/recreational_mathematics/2d-wave-equation.php
-
-use std::time::Duration;
-
 use bevy::prelude::*;
 use ndarray::prelude::*;
 use ndarray::Zip;
 
-use crate::animation_plugin::PlotClickedEvent;
-use crate::finite_difference::update_with_absorbing_boundary;
-use crate::finite_difference::{
+use crate::AppState;
+
+use super::animation_plugin::PlotClickedEvent;
+use super::finite_difference::update_with_absorbing_boundary;
+use super::finite_difference::{
     update_with_laplace_operator_1, update_with_laplace_operator_4,
 };
-use crate::CommandClear;
-use crate::CommandStart;
-use crate::CommandStop;
-use crate::SimulationGrid;
-use crate::SimulationParameters;
+use super::SimulationGrid;
+use super::SimulationParameters;
 
 /// A field containing the factor for the Laplace Operator that
 /// combines Velocity and Grid Constants for the `Wave Equation`
@@ -41,10 +36,15 @@ impl Plugin for SimulationPlugin {
             .insert_resource(Tau::default())
             .insert_resource(Kappa::default())
             .insert_resource(ApplyingForceTimer(timer))
-            .add_startup_system(init_resources)
-            .add_system(apply_force)
-            .add_system(update_wave)
-            .add_system(command_event_handler);
+            .add_system_set(
+                SystemSet::on_enter(AppState::Wave2dSimulation)
+                    .with_system(setup),
+            )
+            .add_system_set(
+                SystemSet::on_update(AppState::Wave2dSimulation)
+                    .with_system(apply_force)
+                    .with_system(update_wave),
+            );
     }
 
     fn name(&self) -> &str {
@@ -56,7 +56,7 @@ impl Plugin for SimulationPlugin {
     }
 }
 
-fn init_resources(
+fn setup(
     mut tau: ResMut<Tau>,
     mut kappa: ResMut<Kappa>,
     mut u: ResMut<SimulationGrid>,
@@ -158,35 +158,5 @@ fn update_wave(
         );
     } else {
         u.0.mapv_inplace(|u| u * 0.995);
-    }
-}
-
-fn command_event_handler(
-    mut start_events: EventReader<CommandStart>,
-    mut stop_events: EventReader<CommandStop>,
-    mut clear_events: EventReader<CommandClear>,
-    parameters: Res<SimulationParameters>,
-    mut u: ResMut<SimulationGrid>,
-    mut applying_force_timer: ResMut<ApplyingForceTimer>,
-) {
-    for _ in start_events.iter() {
-        if parameters.applied_force_frequency_hz > 0.0 {
-            applying_force_timer.0.set_duration(Duration::from_secs_f32(
-                1.0 / parameters.applied_force_frequency_hz,
-            ));
-            applying_force_timer.0.set_mode(TimerMode::Repeating);
-            applying_force_timer.0.unpause();
-        } else {
-            applying_force_timer.0.pause();
-        }
-    }
-
-    for _ in stop_events.iter() {
-        applying_force_timer.0.pause();
-        applying_force_timer.0.pause();
-    }
-
-    for _ in clear_events.iter() {
-        u.0 = Array3::zeros((3, parameters.dimx, parameters.dimy));
     }
 }

@@ -1,3 +1,5 @@
+// curtesy of https://beltoforion.de/en/recreational_mathematics/2d-wave-equation.php
+
 use std::f32::consts::E;
 
 use ndarray::prelude::*;

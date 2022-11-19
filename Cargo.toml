@@ -7,7 +7,6 @@ edition = "2021"
 rand = "*"
 bevy = "0.9"
 ndarray = "0.15"
-bevy-inspector-egui = "0.14"
 
 # Enable a small amount of optimization in debug mode
 [profile.dev]
