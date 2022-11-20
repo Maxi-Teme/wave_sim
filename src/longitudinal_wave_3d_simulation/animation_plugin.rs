@@ -5,12 +5,12 @@ use bevy::time::Stopwatch;
 use bevy_rapier3d::prelude::*;
 
 use crate::pan_orbit_camera::{update_pan_orbit_camera, PanOrbitCamera};
-use crate::{AppCamera, AppState, UiCamera};
+use crate::{AppCamera, AppState};
 
-use super::SimulationParameters;
+use super::{LongitudinalWave3dSimulationParameters, UiEvents};
 
 #[derive(Default, Resource)]
-struct Entities(Vec<Entity>);
+pub struct Entities(pub Vec<Entity>);
 
 #[derive(Resource)]
 struct AnimationTimer(Stopwatch);
@@ -43,7 +43,8 @@ impl Plugin for AnimationPlugin {
                 SystemSet::on_update(AppState::LongitudinalWaveSimulation3d)
                     .with_system(update_pan_orbit_camera)
                     .with_system(apply_impulse)
-                    .with_system(apply_equilibrium_force),
+                    .with_system(apply_equilibrium_force)
+                    .with_system(on_ui_events),
             )
             .add_system_set(
                 SystemSet::on_exit(AppState::LongitudinalWaveSimulation3d)
@@ -53,15 +54,18 @@ impl Plugin for AnimationPlugin {
 }
 
 fn setup(
+    mut time: ResMut<Time>,
     mut commands: Commands,
-    cameras: Query<Entity, (With<AppCamera>, Without<UiCamera>)>,
+    cameras: Query<Entity, With<AppCamera>>,
     mut mouse_button: ResMut<Input<MouseButton>>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    parameters: Res<SimulationParameters>,
+    parameters: Res<LongitudinalWave3dSimulationParameters>,
     mut entities: ResMut<Entities>,
 ) {
     mouse_button.reset_all();
+
+    time.pause();
 
     if let Ok(camera_entity) = cameras.get_single() {
         commands.entity(camera_entity).despawn();
@@ -87,6 +91,58 @@ fn setup(
 
     entities.0.push(plane.id());
 
+    // spheres
+    initialize_spheres(
+        &mut commands,
+        &mut meshes,
+        &mut materials,
+        &parameters,
+        &mut entities,
+    );
+
+    // directional 'sun' light
+    let sunlight = commands.spawn(DirectionalLightBundle {
+        directional_light: DirectionalLight {
+            shadows_enabled: true,
+            illuminance: 10000.0,
+            ..default()
+        },
+        transform: Transform {
+            translation: Vec3::new(0.0, 2.0, 0.0),
+            rotation: Quat::from_rotation_x(-PI / 4.0)
+                .mul_quat(Quat::from_rotation_y(PI / 4.0)),
+            ..default()
+        },
+        ..default()
+    });
+    entities.0.push(sunlight.id());
+
+    // camera
+    let translation = Vec3::new(-22.0, 17.0, 19.0);
+    let radius = translation.length();
+
+    commands
+        .spawn((
+            AppCamera,
+            Camera3dBundle {
+                transform: Transform::from_translation(translation)
+                    .looking_at(Vec3::ZERO, Vec3::Y),
+                ..default()
+            },
+        ))
+        .insert(PanOrbitCamera {
+            radius,
+            ..Default::default()
+        });
+}
+
+fn initialize_spheres(
+    commands: &mut Commands,
+    meshes: &mut Assets<Mesh>,
+    materials: &mut Assets<StandardMaterial>,
+    parameters: &LongitudinalWave3dSimulationParameters,
+    entities: &mut Entities,
+) {
     let mesh = meshes.add(Mesh::from(shape::Icosphere {
         radius: parameters.radius,
         subdivisions: 6,
@@ -95,7 +151,6 @@ fn setup(
     let material1_handle = materials.add(Color::rgb(0.6, 0.6, 0.6).into());
     let material2_handle = materials.add(Color::rgb(0.7, 0.5, 0.5).into());
 
-    // spheres
     for x in 0..parameters.dimx {
         for y in 0..parameters.dimy {
             for z in 0..parameters.dimz {
@@ -134,41 +189,6 @@ fn setup(
             }
         }
     }
-
-    // directional 'sun' light
-    let sunlight = commands.spawn(DirectionalLightBundle {
-        directional_light: DirectionalLight {
-            shadows_enabled: true,
-            illuminance: 10000.0,
-            ..default()
-        },
-        transform: Transform {
-            translation: Vec3::new(0.0, 2.0, 0.0),
-            rotation: Quat::from_rotation_x(-PI / 4.0)
-                .mul_quat(Quat::from_rotation_y(PI / 4.0)),
-            ..default()
-        },
-        ..default()
-    });
-    entities.0.push(sunlight.id());
-
-    // camera
-    let translation = Vec3::new(-22.0, 17.0, 19.0);
-    let radius = translation.length();
-
-    commands
-        .spawn((
-            AppCamera,
-            Camera3dBundle {
-                transform: Transform::from_translation(translation)
-                    .looking_at(Vec3::ZERO, Vec3::Y),
-                ..default()
-            },
-        ))
-        .insert(PanOrbitCamera {
-            radius,
-            ..Default::default()
-        });
 }
 
 fn apply_impulse(
@@ -178,16 +198,11 @@ fn apply_impulse(
         (&Particle, &mut ExternalImpulse, &mut Transform),
         With<ApplyingForce>,
     >,
-    parameters: Res<SimulationParameters>,
+    parameters: Res<LongitudinalWave3dSimulationParameters>,
 ) {
     let elapsed = animation_timer.0.elapsed();
     let z =
         (elapsed.as_secs_f32() * parameters.applying_force_freq * TAU).sin();
-
-    // Apply impulses.
-    // for (mut ext_impulse, _) in force_sources.iter_mut() {
-    //     ext_impulse.impulse = Vec3::new(0.0, 0.0, z);
-    // }
 
     for (particle, _, mut transform) in force_sources.iter_mut() {
         transform.translation.z = particle.initial_translation.z
@@ -199,7 +214,7 @@ fn apply_impulse(
 
 fn apply_equilibrium_force(
     mut force_sources: Query<(&Particle, &Transform, &mut ExternalForce)>,
-    parameters: Res<SimulationParameters>,
+    parameters: Res<LongitudinalWave3dSimulationParameters>,
 ) {
     for (particle, transform, mut external_force) in force_sources.iter_mut() {
         let equilizing_force_direction =
@@ -210,8 +225,48 @@ fn apply_equilibrium_force(
     }
 }
 
+fn on_ui_events(
+    mut time: ResMut<Time>,
+    mut ui_events: EventReader<UiEvents>,
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    parameters: Res<LongitudinalWave3dSimulationParameters>,
+    mut entities: ResMut<Entities>,
+    particles: Query<Entity, With<Particle>>,
+) {
+    for event in ui_events.iter() {
+        match event {
+            UiEvents::StartStop => {
+                if time.is_paused() {
+                    time.unpause();
+                } else {
+                    time.pause();
+                }
+            }
+            UiEvents::Reset => {
+                for entity in particles.iter() {
+                    if let Some(mut entity) = commands.get_entity(entity) {
+                        entity.despawn();
+                    }
+                }
+
+                initialize_spheres(
+                    &mut commands,
+                    &mut meshes,
+                    &mut materials,
+                    &parameters,
+                    &mut entities,
+                );
+            }
+        }
+    }
+}
+
 fn cleanup(mut commands: Commands, mut entities: ResMut<Entities>) {
     for entity in entities.0.drain(..) {
-        commands.entity(entity).despawn();
+        if let Some(mut entity) = commands.get_entity(entity) {
+            entity.despawn();
+        }
     }
 }

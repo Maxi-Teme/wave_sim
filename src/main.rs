@@ -8,7 +8,7 @@ mod pan_orbit_camera;
 mod ui;
 mod wave_2d_simulation;
 
-use longitudinal_wave_3d_simulation::LongitudinalWaveSimulation3dPlugin;
+use longitudinal_wave_3d_simulation::LongitudinalWave3dSimulationPlugin;
 use ui::UiPlugin;
 use wave_2d_simulation::Wave2dSimulationPlugin;
 
@@ -22,14 +22,7 @@ pub enum AppState {
 
 impl AppState {
     fn start() -> Self {
-        Self::LongitudinalWaveSimulation3d
-    }
-
-    fn all_as_string() -> Vec<String> {
-        vec![
-            Self::Wave2dSimulation.into(),
-            Self::LongitudinalWaveSimulation3d.into(),
-        ]
+        Self::Wave2dSimulation
     }
 }
 
@@ -53,16 +46,13 @@ impl From<AppState> for String {
 }
 
 #[derive(Component)]
-pub struct UiCamera;
-
-#[derive(Component)]
 pub struct AppCamera;
 
 fn main() {
     let height = 900.0;
 
     App::new()
-        // main plugins
+        // core systems
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             window: WindowDescriptor {
                 height,
@@ -76,17 +66,12 @@ fn main() {
         }))
         .insert_resource(Msaa { samples: 1 })
         .add_state(AppState::start())
+        // debug systems
         .add_plugin(FrameTimeDiagnosticsPlugin::default())
+        // ui configuration
         .add_plugin(UiPlugin)
-        // simulation plugins
+        // simulation systems
         .add_plugin(Wave2dSimulationPlugin)
-        .add_plugin(LongitudinalWaveSimulation3dPlugin)
-        // camera configuration
-        .add_startup_system(setup_cameras)
-        // event consumption
+        .add_plugin(LongitudinalWave3dSimulationPlugin)
         .run();
-}
-
-fn setup_cameras(mut commands: Commands) {
-    commands.spawn((AppCamera, Camera2dBundle::default()));
 }

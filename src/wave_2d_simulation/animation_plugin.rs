@@ -9,13 +9,13 @@ use bevy::render::render_resource::VertexFormat;
 use bevy::sprite::Mesh2dHandle;
 use ndarray::Array3;
 
-use super::SimulationGrid;
-use super::SimulationParameters;
+use super::UiEvents;
+use super::Wave2dSimulationGrid;
+use super::Wave2dSimulationParameters;
 use crate::colored_mesh::ColoredMesh2d;
 use crate::colored_mesh::ColoredMesh2dPlugin;
 use crate::AppCamera;
 use crate::AppState;
-use crate::UiCamera;
 
 const VERTEX_ATTRIBUTE_COLOR_ID: MeshVertexAttribute =
     MeshVertexAttribute::new("Vertex_Color", 1, VertexFormat::Uint32);
@@ -41,7 +41,8 @@ impl Plugin for AnimationPlugin {
             .add_system_set(
                 SystemSet::on_update(AppState::Wave2dSimulation)
                     .with_system(update_mesh)
-                    .with_system(mouse_event_handler),
+                    .with_system(mouse_event_handler)
+                    .with_system(on_ui_events),
             )
             .add_system_set(
                 SystemSet::on_exit(AppState::Wave2dSimulation)
@@ -53,12 +54,26 @@ impl Plugin for AnimationPlugin {
 fn setup(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
-    parameters: Res<SimulationParameters>,
-    cameras: Query<Entity, (With<AppCamera>, Without<UiCamera>)>,
+    parameters: Res<Wave2dSimulationParameters>,
+    cameras: Query<Entity, With<AppCamera>>,
     mut mouse_button: ResMut<Input<MouseButton>>,
 ) {
     mouse_button.reset_all();
 
+    initialize_plot(&mut commands, &parameters, &mut meshes);
+
+    if let Ok(camera_entity) = cameras.get_single() {
+        commands.entity(camera_entity).despawn();
+    }
+
+    commands.spawn((AppCamera, Camera2dBundle::default()));
+}
+
+fn initialize_plot(
+    commands: &mut Commands,
+    parameters: &Wave2dSimulationParameters,
+    meshes: &mut Assets<Mesh>,
+) {
     let dimx: u32 = (parameters.dimx - 1).try_into().unwrap();
     let dimy: u32 = (parameters.dimy - 1).try_into().unwrap();
 
@@ -104,7 +119,7 @@ fn setup(
 
     mesh.set_indices(Some(Indices::U32(indices)));
 
-    let dimx_shift: f32 = -(dimx as f32) * parameters.cellsize / 2.0;
+    let dimx_shift: f32 = -(dimx as f32) * parameters.cellsize / 4.0;
     let dimy_shift: f32 = -(dimy as f32) * parameters.cellsize / 2.0;
 
     // info!("{:?}", dimx_shift);
@@ -125,17 +140,11 @@ fn setup(
             global_transform: GlobalTransform::IDENTITY,
         },
     ));
-
-    if let Ok(camera_entity) = cameras.get_single() {
-        commands.entity(camera_entity).despawn();
-    }
-
-    commands.spawn((AppCamera, Camera2dBundle::default()));
 }
 
 fn update_mesh(
-    u: Res<SimulationGrid>,
-    parameters: Res<SimulationParameters>,
+    u: Res<Wave2dSimulationGrid>,
+    mut parameters: ResMut<Wave2dSimulationParameters>,
     mut meshes: ResMut<Assets<Mesh>>,
 ) {
     for (_, mesh) in meshes.iter_mut() {
@@ -144,13 +153,13 @@ fn update_mesh(
         if let Some(VertexAttributeValues::Uint32(color_vector)) =
             vertex_attribute
         {
-            *color_vector = get_color_vector(&parameters, &u.0);
+            *color_vector = get_color_vector(&mut parameters, &u.0);
         }
     }
 }
 
 fn get_color_vector(
-    parameters: &SimulationParameters,
+    parameters: &mut Wave2dSimulationParameters,
     simulation_grid: &Array3<f32>,
 ) -> Vec<u32> {
     let dimx = parameters.dimx - 1;
@@ -159,17 +168,30 @@ fn get_color_vector(
     let mut color_vector =
         Vec::with_capacity(parameters.dimx * parameters.dimy);
 
-    let max_amplitude = parameters.applied_force_amplitude + 1.0;
+    let mut max_amplitude = f32::MIN;
 
     for x in 0..=dimx {
         for y in 0..=dimy {
             let amplitude = simulation_grid.get((0, x, y)).unwrap();
-            let amplitude = amplitude / max_amplitude;
+
+            if *amplitude > max_amplitude {
+                max_amplitude = *amplitude;
+            }
+
+            let amplitude = amplitude / parameters.max_amplitude;
             let amplitude = (amplitude * 48.0 + 1.0).log(E) / 4.0;
 
             color_vector.push(get_smooth_color_by_amplitude(amplitude));
         }
     }
+
+    parameters.max_amplitude_avg.pop_back();
+    parameters.max_amplitude_avg.push_front(max_amplitude);
+
+    let avg = parameters.max_amplitude_avg.iter().sum::<f32>()
+        / parameters.max_amplitude_avg.len() as f32;
+
+    parameters.max_amplitude = avg.min(0.9).max(0.1);
 
     color_vector
 }
@@ -180,13 +202,10 @@ fn get_smooth_color_by_amplitude(amplitude: f32) -> u32 {
 
 fn mouse_event_handler(
     windows: Res<Windows>,
-    cameras: Query<
-        (&Camera, &GlobalTransform),
-        (With<AppCamera>, Without<UiCamera>),
-    >,
+    cameras: Query<(&Camera, &GlobalTransform), With<AppCamera>>,
     buttons: Res<Input<MouseButton>>,
     plots: Query<&Transform, With<Plot>>,
-    parameters: Res<SimulationParameters>,
+    parameters: Res<Wave2dSimulationParameters>,
     mut event: EventWriter<PlotClickedEvent>,
 ) {
     let (camera, camera_transform) = cameras.get_single().unwrap();
@@ -216,8 +235,32 @@ fn mouse_event_handler(
     }
 }
 
+fn on_ui_events(
+    mut time: ResMut<Time>,
+    mut ui_events: EventReader<UiEvents>,
+    mut u: ResMut<Wave2dSimulationGrid>,
+    parameters: Res<Wave2dSimulationParameters>,
+) {
+    for event in ui_events.iter() {
+        match event {
+            UiEvents::StartStopTime => {
+                if time.is_paused() {
+                    time.unpause();
+                } else {
+                    time.pause();
+                }
+            }
+            UiEvents::Reset => {
+                u.0 = Array3::zeros((3, parameters.dimx, parameters.dimy));
+            }
+        }
+    }
+}
+
 fn cleanup(mut commands: Commands, plots: Query<Entity, With<Plot>>) {
     for plot in plots.iter() {
-        commands.entity(plot).despawn();
+        if let Some(mut entity) = commands.get_entity(plot) {
+            entity.despawn();
+        }
     }
 }

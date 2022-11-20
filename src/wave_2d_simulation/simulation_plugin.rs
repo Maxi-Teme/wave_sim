@@ -1,41 +1,26 @@
+use std::f32::consts::TAU;
+
 use bevy::prelude::*;
+use bevy::time::Stopwatch;
 use ndarray::prelude::*;
 use ndarray::Zip;
 
 use crate::AppState;
 
 use super::animation_plugin::PlotClickedEvent;
-use super::finite_difference::update_with_absorbing_boundary;
-use super::finite_difference::{
-    update_with_laplace_operator_1, update_with_laplace_operator_4,
-};
-use super::SimulationGrid;
-use super::SimulationParameters;
-
-/// A field containing the factor for the Laplace Operator that
-/// combines Velocity and Grid Constants for the `Wave Equation`
-#[derive(Default, Resource)]
-struct Tau(Array2<f32>);
-
-/// A field containing the factor for the Laplace Operator that
-/// combines Velocity and Grid Constants for the `Boundary Condition`
-#[derive(Default, Resource)]
-struct Kappa(Array2<f32>);
+use super::finite_difference::update_with_laplace_operator;
+use super::Wave2dSimulationGrid;
+use super::Wave2dSimulationParameters;
 
 #[derive(Resource)]
-struct ApplyingForceTimer(Timer);
+struct ApplyingForceTimer(Stopwatch);
 
 pub struct SimulationPlugin;
 
 impl Plugin for SimulationPlugin {
     fn build(&self, app: &mut App) {
-        let mut timer = Timer::default();
-        timer.pause();
-
-        app.insert_resource(SimulationGrid::default())
-            .insert_resource(Tau::default())
-            .insert_resource(Kappa::default())
-            .insert_resource(ApplyingForceTimer(timer))
+        app.insert_resource(Wave2dSimulationGrid::default())
+            .insert_resource(ApplyingForceTimer(Stopwatch::new()))
             .add_system_set(
                 SystemSet::on_enter(AppState::Wave2dSimulation)
                     .with_system(setup),
@@ -43,48 +28,47 @@ impl Plugin for SimulationPlugin {
             .add_system_set(
                 SystemSet::on_update(AppState::Wave2dSimulation)
                     .with_system(apply_force)
-                    .with_system(update_wave),
+                    .with_system(update_wave)
+                    .with_system(on_mouseclick),
             );
     }
 }
 
 fn setup(
-    mut tau: ResMut<Tau>,
-    mut kappa: ResMut<Kappa>,
-    mut u: ResMut<SimulationGrid>,
-    parameters: Res<SimulationParameters>,
+    mut u: ResMut<Wave2dSimulationGrid>,
+    parameters: Res<Wave2dSimulationParameters>,
 ) {
-    tau.0 = Array::from_elem(
-        (parameters.dimx, parameters.dimy),
-        ((parameters.wave_velocity * parameters.time_step_width)
-            / parameters.spatial_step_width)
-            .powi(2),
-    );
-
-    kappa.0 = Array2::from_elem(
-        (parameters.dimx, parameters.dimy),
-        parameters.time_step_width * parameters.wave_velocity
-            / parameters.spatial_step_width,
-    );
-
     u.0 = Array3::zeros((3, parameters.dimx, parameters.dimy));
 }
 
 fn apply_force(
     time: Res<Time>,
-    mut timer: ResMut<ApplyingForceTimer>,
-    mut u: ResMut<SimulationGrid>,
-    parameters: Res<SimulationParameters>,
-    mut plot_clicked_events: EventReader<PlotClickedEvent>,
+    mut applying_force_timer: ResMut<ApplyingForceTimer>,
+    mut u: ResMut<Wave2dSimulationGrid>,
+    parameters: Res<Wave2dSimulationParameters>,
 ) {
-    if timer.0.tick(time.delta()).just_finished() {
-        let init_x = 4 * parameters.dimx / 6;
-        let init_y = 4 * parameters.dimy / 6;
-
-        *u.0.get_mut((0, init_x, init_y)).unwrap() =
-            parameters.applied_force_amplitude;
+    if !parameters.apply_force {
+        return;
     }
 
+    let elapsed = applying_force_timer.0.elapsed();
+    let amplitude =
+        (elapsed.as_secs_f32() * parameters.applied_force_frequency_hz * TAU)
+            .sin();
+
+    let init_x = 4 * parameters.dimx / 6;
+    let init_y = 4 * parameters.dimy / 6;
+
+    *u.0.get_mut((0, init_x, init_y)).unwrap() = amplitude;
+
+    applying_force_timer.0.tick(time.delta());
+}
+
+fn on_mouseclick(
+    mut u: ResMut<Wave2dSimulationGrid>,
+    parameters: Res<Wave2dSimulationParameters>,
+    mut plot_clicked_events: EventReader<PlotClickedEvent>,
+) {
     for event in plot_clicked_events.iter() {
         let event_x: usize = event.x.round() as usize;
         let event_y: usize = event.y.round() as usize;
@@ -94,19 +78,19 @@ fn apply_force(
             && 0 < event_y
             && event_y < parameters.dimy
         {
-            *u.0.get_mut((0, event_x, event_y)).unwrap() =
-                parameters.applied_force_amplitude;
+            *u.0.get_mut((0, event_x, event_y)).unwrap() = 1.0;
         }
     }
 }
 
 fn update_wave(
-    mut u: ResMut<SimulationGrid>,
-    tau: Res<Tau>,
-    kappa: Res<Kappa>,
-    parameters: Res<SimulationParameters>,
+    time: Res<Time>,
+    mut u: ResMut<Wave2dSimulationGrid>,
+    parameters: Res<Wave2dSimulationParameters>,
 ) {
-    let boundary_size = parameters.boundary_size;
+    if time.is_paused() {
+        return;
+    }
 
     let (u_2, mut u_1, u_0) =
         u.0.multi_slice_mut((s![2, .., ..], s![1, .., ..], s![0, .., ..]));
@@ -115,40 +99,28 @@ fn update_wave(
 
     Zip::from(u_1).and(u_0).for_each(std::mem::swap);
 
-    let new_u = if boundary_size == 1 {
-        update_with_laplace_operator_1(
-            parameters.dimx,
-            parameters.dimy,
-            &tau.0,
-            &u.0,
-        )
-    } else if boundary_size == 4 {
-        update_with_laplace_operator_4(
-            parameters.dimx,
-            parameters.dimy,
-            &tau.0,
-            &u.0,
-        )
-    } else {
-        todo!("boundary_size of size {}", boundary_size);
-    };
+    let tau = get_tau(&parameters);
+
+    let new_u = update_with_laplace_operator(
+        parameters.dimx,
+        parameters.dimy,
+        tau,
+        &u.0,
+    );
 
     u.0.slice_mut(s![
         0,
-        boundary_size..(parameters.dimx - boundary_size),
-        boundary_size..(parameters.dimy - boundary_size)
+        parameters.boundary_size..(parameters.dimx - parameters.boundary_size),
+        parameters.boundary_size..(parameters.dimy - parameters.boundary_size)
     ])
     .assign(&new_u);
 
-    if parameters.use_absorbing_boundary {
-        update_with_absorbing_boundary(
-            parameters.dimx,
-            parameters.dimy,
-            boundary_size,
-            &kappa.0,
-            &mut u.0,
-        );
-    } else {
-        u.0.mapv_inplace(|u| u * 0.995);
-    }
+    u.0.mapv_inplace(|u| u * parameters.syntetic_energy_loss_fraction);
+}
+
+fn get_tau(parameters: &Wave2dSimulationParameters) -> Array2<f32> {
+    Array::from_elem(
+        (parameters.dimx, parameters.dimy),
+        parameters.wave_velocity,
+    )
 }

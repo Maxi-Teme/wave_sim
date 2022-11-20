@@ -1,40 +1,12 @@
 // courtesy of https://beltoforion.de/en/recreational_mathematics/2d-wave-equation.php
 
-use std::f32::consts::E;
-
 use ndarray::prelude::*;
 use ndarray::ViewRepr;
 
-pub fn _sigmoid(x: &f32, stretch: f32) -> f32 {
-    1.0 / (1.0 + E.powf(-(x / stretch)))
-}
-
-pub fn update_with_laplace_operator_1(
+pub fn update_with_laplace_operator(
     dimx: usize,
     dimy: usize,
-    tau: &Array2<f32>,
-    u: &Array3<f32>,
-) -> Array2<f32> {
-    let alphas: ArrayBase<ViewRepr<&f32>, Dim<[usize; 2]>> =
-        tau.slice(s![1..(dimx - 1), 1..(dimy - 1)]);
-
-    let laplace_operator: Array2<f32> = -4.0
-        * &u.slice(s![1, 1..(dimx - 1), 1..(dimy - 1)])
-        + u.slice(s![1, 0..(dimx - 2), 1..(dimy - 1)])
-        + u.slice(s![1, 2..dimx, 1..(dimy - 1)])
-        + u.slice(s![1, 1..(dimx - 1), 0..(dimy - 2)])
-        + u.slice(s![1, 1..(dimx - 1), 2..dimy]);
-
-    let prev: Array2<f32> = 2.0 * &u.slice(s![1, 1..(dimx - 1), 1..(dimy - 1)])
-        - u.slice(s![2, 1..(dimx - 1), 1..(dimy - 1)]);
-
-    laplace_operator * alphas + prev
-}
-
-pub fn update_with_laplace_operator_4(
-    dimx: usize,
-    dimy: usize,
-    tau: &Array2<f32>,
+    tau: Array2<f32>,
     u: &Array3<f32>,
 ) -> Array2<f32> {
     let alphas: ArrayBase<ViewRepr<&f32>, Dim<[usize; 2]>> =
@@ -66,7 +38,7 @@ pub fn update_with_laplace_operator_4(
     laplace_operator * alphas + prev
 }
 
-pub fn update_with_absorbing_boundary(
+pub fn _update_with_absorbing_boundary(
     dimx: usize,
     dimy: usize,
     sz: usize,

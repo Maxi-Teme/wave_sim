@@ -8,6 +8,7 @@ rand = "*"
 bevy = "0.9"
 ndarray = "0.15"
 bevy_rapier3d = "0.19"
+bevy_egui = "0.17"
 
 # Enable a small amount of optimization in debug mode
 [profile.dev]
