@@ -42,7 +42,7 @@ impl Default for Wave2dSimulationParameters {
             apply_force: false,
             max_amplitude: 1.0,
             max_amplitude_avg: VecDeque::from(vec![0.0; 27]),
-            
+
             syntetic_energy_loss_fraction: 0.99,
             applied_force_frequency_hz: 4.0,
             wave_velocity: 0.27,

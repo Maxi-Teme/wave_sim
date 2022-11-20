@@ -22,12 +22,14 @@ impl Plugin for UiPlugin {
 #[derive(Resource)]
 pub struct UiState {
     fps_avg: VecDeque<f64>,
+    pub panel_x: f32,
 }
 
 impl Default for UiState {
     fn default() -> Self {
         Self {
             fps_avg: VecDeque::from(vec![0.0; 27]),
+            panel_x: 350.0,
         }
     }
 }
@@ -39,6 +41,7 @@ fn configure_ui(mut egui_ctx: ResMut<EguiContext>) {
     });
 }
 
+#[allow(clippy::too_many_arguments)]
 fn show_ui(
     mut egui_ctx: ResMut<EguiContext>,
     mut ui_state: ResMut<UiState>,

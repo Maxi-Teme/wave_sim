@@ -20,7 +20,6 @@ impl Default for PanOrbitCamera {
 }
 
 /// courtesy of: https://bevy-cheatbook.github.io/cookbook/pan-orbit-camera.html
-/// Pan the camera with middle mouse click, zoom with scroll wheel, orbit with right mouse click.
 pub fn update_pan_orbit_camera(
     windows: Res<Windows>,
     mut ev_motion: EventReader<MouseMotion>,
@@ -28,9 +27,8 @@ pub fn update_pan_orbit_camera(
     input_mouse: Res<Input<MouseButton>>,
     mut query: Query<(&mut PanOrbitCamera, &mut Transform, &Projection)>,
 ) {
-    // change input mapping for orbit and panning here
     let orbit_button = MouseButton::Middle;
-    let pan_button = MouseButton::Right;
+    let pan_button = MouseButton::Left;
 
     let mut pan = Vec2::ZERO;
     let mut rotation_move = Vec2::ZERO;
@@ -48,10 +46,20 @@ pub fn update_pan_orbit_camera(
     for ev in ev_scroll.iter() {
         scroll += ev.y;
     }
+
     if input_mouse.just_released(orbit_button)
         || input_mouse.just_pressed(orbit_button)
     {
         orbit_button_changed = true;
+    }
+
+    // TODO: remove hardcoded filter for ui
+    for window in windows.iter() {
+        if let Some(position) = window.cursor_position() {
+            if position.x < 350.0 {
+                return;
+            }
+        }
     }
 
     for (mut pan_orbit, mut transform, projection) in query.iter_mut() {
@@ -79,7 +87,7 @@ pub fn update_pan_orbit_camera(
             let yaw = Quat::from_rotation_y(-delta_x);
             let pitch = Quat::from_rotation_x(-delta_y);
             transform.rotation = yaw * transform.rotation; // rotate around global y axis
-            transform.rotation = transform.rotation * pitch; // rotate around local x axis
+            transform.rotation *= pitch; // rotate around local x axis
         } else if pan.length_squared() > 0.0 {
             any = true;
             // make panning distance independent of resolution and FOV,
@@ -100,7 +108,7 @@ pub fn update_pan_orbit_camera(
             any = true;
             pan_orbit.radius -= scroll * pan_orbit.radius * 0.2;
             // dont allow zoom to reach zero or you get stuck
-            pan_orbit.radius = f32::max(pan_orbit.radius, 0.05);
+            pan_orbit.radius = pan_orbit.radius.clamp(0.05, 1000.0);
         }
 
         if any {
@@ -118,6 +126,5 @@ pub fn update_pan_orbit_camera(
 
 fn get_primary_window_size(windows: &Res<Windows>) -> Vec2 {
     let window = windows.get_primary().unwrap();
-    let window = Vec2::new(window.width() as f32, window.height() as f32);
-    window
+    Vec2::new(window.width(), window.height())
 }

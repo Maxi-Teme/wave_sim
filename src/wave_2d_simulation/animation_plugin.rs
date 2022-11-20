@@ -191,7 +191,7 @@ fn get_color_vector(
     let avg = parameters.max_amplitude_avg.iter().sum::<f32>()
         / parameters.max_amplitude_avg.len() as f32;
 
-    parameters.max_amplitude = avg.min(0.9).max(0.1);
+    parameters.max_amplitude = avg.clamp(0.1, 0.9);
 
     color_vector
 }

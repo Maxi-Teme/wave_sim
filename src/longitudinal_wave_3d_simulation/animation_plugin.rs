@@ -53,6 +53,7 @@ impl Plugin for AnimationPlugin {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn setup(
     mut time: ResMut<Time>,
     mut commands: Commands,
@@ -225,6 +226,7 @@ fn apply_equilibrium_force(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn on_ui_events(
     mut time: ResMut<Time>,
     mut ui_events: EventReader<UiEvents>,
