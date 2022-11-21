@@ -10,7 +10,7 @@ use crate::{AppCamera, AppState};
 use super::{LongitudinalWave3dSimulationParameters, UiEvents};
 
 #[derive(Default, Resource)]
-pub struct Entities(pub Vec<Entity>);
+struct Entities(Vec<Entity>);
 
 #[derive(Resource)]
 struct AnimationTimer(Stopwatch);
@@ -29,12 +29,6 @@ impl Plugin for AnimationPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(Entities::default())
             .insert_resource(AnimationTimer(Stopwatch::new()))
-            .insert_resource(RapierConfiguration {
-                gravity: Vec3::ZERO,
-                ..default()
-            })
-            .add_plugin(RapierPhysicsPlugin::<()>::default())
-            .add_plugin(RapierDebugRenderPlugin::default())
             .add_system_set(
                 SystemSet::on_enter(AppState::LongitudinalWaveSimulation3d)
                     .with_system(setup),
@@ -63,7 +57,12 @@ fn setup(
     mut materials: ResMut<Assets<StandardMaterial>>,
     parameters: Res<LongitudinalWave3dSimulationParameters>,
     mut entities: ResMut<Entities>,
+    mut rapier_debug_config: ResMut<DebugRenderContext>,
+    mut rapier_config: ResMut<RapierConfiguration>,
 ) {
+    rapier_debug_config.enabled = true;
+    rapier_config.gravity = Vec3::ZERO;
+
     mouse_button.reset_all();
 
     time.pause();
@@ -201,6 +200,8 @@ fn apply_impulse(
     >,
     parameters: Res<LongitudinalWave3dSimulationParameters>,
 ) {
+    animation_timer.0.tick(time.delta());
+
     let elapsed = animation_timer.0.elapsed();
     let z =
         (elapsed.as_secs_f32() * parameters.applying_force_freq * TAU).sin();
@@ -209,8 +210,6 @@ fn apply_impulse(
         transform.translation.z = particle.initial_translation.z
             + (z * parameters.applying_force_factor);
     }
-
-    animation_timer.0.tick(time.delta());
 }
 
 fn apply_equilibrium_force(
@@ -265,10 +264,18 @@ fn on_ui_events(
     }
 }
 
-fn cleanup(mut commands: Commands, mut entities: ResMut<Entities>) {
+fn cleanup(
+    mut commands: Commands,
+    mut entities: ResMut<Entities>,
+    mut rapier_debug_config: ResMut<DebugRenderContext>,
+    mut rapier_config: ResMut<RapierConfiguration>,
+) {
     for entity in entities.0.drain(..) {
         if let Some(mut entity) = commands.get_entity(entity) {
             entity.despawn();
         }
     }
+
+    *rapier_debug_config = DebugRenderContext::default();
+    *rapier_config = RapierConfiguration::default();
 }

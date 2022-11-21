@@ -3,8 +3,10 @@ use std::collections::VecDeque;
 use bevy::diagnostic::{Diagnostics, FrameTimeDiagnosticsPlugin};
 use bevy::prelude::*;
 use bevy_egui::{egui, EguiContext, EguiPlugin};
+use bevy_rapier3d::render::DebugRenderContext;
 
 use crate::longitudinal_wave_3d_simulation::LongitudinalWave3dSimulationParameters;
+use crate::particle_mess::{self, ParticleMessParameters};
 use crate::wave_2d_simulation::Wave2dSimulationParameters;
 use crate::{longitudinal_wave_3d_simulation, wave_2d_simulation, AppState};
 
@@ -55,6 +57,8 @@ fn show_ui(
     longitudinal_wave_3d_events: EventWriter<
         longitudinal_wave_3d_simulation::UiEvents,
     >,
+    mut particle_mess_parameters: ResMut<ParticleMessParameters>,
+    mut rapier_debug_config: ResMut<DebugRenderContext>,
 ) {
     egui::TopBottomPanel::top("top_panel")
         .resizable(false)
@@ -98,6 +102,13 @@ fn show_ui(
                         longitudinal_wave_3d_events,
                     );
                 }
+                AppState::ParticleMess => {
+                    particle_mess::show_ui(
+                        ui,
+                        &mut particle_mess_parameters,
+                        &mut rapier_debug_config,
+                    );
+                }
             }
 
             // debug info
@@ -121,6 +132,11 @@ fn select_simulation(ui: &mut egui::Ui, app_state: &mut State<AppState>) {
                 AppState::LongitudinalWaveSimulation3d,
                 String::from(AppState::LongitudinalWaveSimulation3d),
             );
+            ui.selectable_value(
+                &mut current_state,
+                AppState::ParticleMess,
+                String::from(AppState::ParticleMess),
+            )
         });
     if current_state != *app_state.current() {
         app_state.set(current_state).unwrap();

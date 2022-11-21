@@ -118,8 +118,10 @@ pub fn update_pan_orbit_camera(
             let rot_matrix = Mat3::from_quat(transform.rotation);
             transform.translation = pan_orbit.focus
                 + rot_matrix.mul_vec3(Vec3::new(0.0, 0.0, pan_orbit.radius));
+        }
 
-            // info!("{:?}", transform.translation);
+        if transform.translation.is_nan() {
+            error!("Camera translation is NaN: {:?}", transform.translation);
         }
     }
 }

@@ -1,14 +1,17 @@
 use bevy::diagnostic::FrameTimeDiagnosticsPlugin;
 use bevy::prelude::*;
 use bevy::window::PresentMode;
+use bevy_rapier3d::prelude::*;
 
 mod colored_mesh;
 mod longitudinal_wave_3d_simulation;
 mod pan_orbit_camera;
+mod particle_mess;
 mod ui;
 mod wave_2d_simulation;
 
 use longitudinal_wave_3d_simulation::LongitudinalWave3dSimulationPlugin;
+use particle_mess::ParticleMessPlugin;
 use ui::UiPlugin;
 use wave_2d_simulation::Wave2dSimulationPlugin;
 
@@ -18,21 +21,12 @@ pub const RESOLUTION: f32 = 16.0 / 9.0;
 pub enum AppState {
     Wave2dSimulation,
     LongitudinalWaveSimulation3d,
+    ParticleMess,
 }
 
 impl AppState {
     fn start() -> Self {
-        Self::Wave2dSimulation
-    }
-}
-
-impl From<String> for AppState {
-    fn from(value: String) -> Self {
-        if value == "wave_2d" {
-            Self::Wave2dSimulation
-        } else {
-            Self::LongitudinalWaveSimulation3d
-        }
+        Self::ParticleMess
     }
 }
 
@@ -40,7 +34,10 @@ impl From<AppState> for String {
     fn from(value: AppState) -> Self {
         match value {
             AppState::Wave2dSimulation => "wave_2d".to_string(),
-            _ => "longitudinal_wave_3d".to_string(),
+            AppState::LongitudinalWaveSimulation3d => {
+                "longitudinal_wave_3d".to_string()
+            }
+            AppState::ParticleMess => "particle_mess".to_string(),
         }
     }
 }
@@ -65,13 +62,21 @@ fn main() {
             ..default()
         }))
         .insert_resource(Msaa { samples: 1 })
+        // app
         .add_state(AppState::start())
+        // physics
+        .insert_resource(RapierConfiguration::default())
+        .add_plugin(
+            RapierPhysicsPlugin::<()>::default(),
+        )
         // debug systems
         .add_plugin(FrameTimeDiagnosticsPlugin::default())
+        .add_plugin(RapierDebugRenderPlugin::default())
         // ui configuration
         .add_plugin(UiPlugin)
         // simulation systems
         .add_plugin(Wave2dSimulationPlugin)
         .add_plugin(LongitudinalWave3dSimulationPlugin)
+        .add_plugin(ParticleMessPlugin)
         .run();
 }
