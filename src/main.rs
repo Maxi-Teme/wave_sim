@@ -5,15 +5,18 @@ use bevy_rapier3d::prelude::*;
 
 mod colored_mesh;
 mod longitudinal_wave_3d_simulation;
+mod objects_3d;
 mod pan_orbit_camera;
 mod particle_mess;
 mod ui;
 mod wave_2d_simulation;
+mod wave_in_panel;
 
 use longitudinal_wave_3d_simulation::LongitudinalWave3dSimulationPlugin;
 use particle_mess::ParticleMessPlugin;
 use ui::UiPlugin;
 use wave_2d_simulation::Wave2dSimulationPlugin;
+use wave_in_panel::WaveInPanelPlugin;
 
 pub const RESOLUTION: f32 = 16.0 / 9.0;
 
@@ -22,11 +25,12 @@ pub enum AppState {
     Wave2dSimulation,
     LongitudinalWaveSimulation3d,
     ParticleMess,
+    WaveInPanel,
 }
 
 impl AppState {
     fn start() -> Self {
-        Self::ParticleMess
+        Self::WaveInPanel
     }
 }
 
@@ -38,6 +42,7 @@ impl From<AppState> for String {
                 "longitudinal_wave_3d".to_string()
             }
             AppState::ParticleMess => "particle_mess".to_string(),
+            AppState::WaveInPanel => "wave_in_panel".to_string(),
         }
     }
 }
@@ -66,9 +71,7 @@ fn main() {
         .add_state(AppState::start())
         // physics
         .insert_resource(RapierConfiguration::default())
-        .add_plugin(
-            RapierPhysicsPlugin::<()>::default(),
-        )
+        .add_plugin(RapierPhysicsPlugin::<()>::default())
         // debug systems
         .add_plugin(FrameTimeDiagnosticsPlugin::default())
         .add_plugin(RapierDebugRenderPlugin::default())
@@ -78,5 +81,6 @@ fn main() {
         .add_plugin(Wave2dSimulationPlugin)
         .add_plugin(LongitudinalWave3dSimulationPlugin)
         .add_plugin(ParticleMessPlugin)
+        .add_plugin(WaveInPanelPlugin)
         .run();
 }

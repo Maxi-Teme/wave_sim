@@ -1,8 +1,5 @@
-use std::f32::consts::{PI, TAU};
+use std::f32::consts::PI;
 
-use bevy::ecs::component::StorageType;
-use bevy::ecs::system::EntityCommands;
-use bevy::prelude::shape::Box;
 use bevy::prelude::*;
 use bevy::time::Stopwatch;
 use bevy_egui::egui;
@@ -10,6 +7,7 @@ use bevy_rapier3d::prelude::*;
 use rand::rngs::ThreadRng;
 use rand::Rng;
 
+use crate::objects_3d::BallBundle;
 use crate::pan_orbit_camera::{update_pan_orbit_camera, PanOrbitCamera};
 use crate::{AppCamera, AppState};
 
@@ -72,18 +70,6 @@ struct ParticleMessStopwatch(Stopwatch);
 #[derive(Default, Component)]
 struct Particle;
 
-#[derive(Default, Bundle)]
-struct ParticleBundle {
-    _particle: Particle,
-    pbr_bundle: PbrBundle,
-    collider: Collider,
-    rigid_body: RigidBody,
-    restitution: Restitution,
-    velocity: Velocity,
-    external_impulse: ExternalImpulse,
-    external_force: ExternalForce,
-}
-
 pub struct ParticleMessPlugin;
 
 impl Plugin for ParticleMessPlugin {
@@ -133,8 +119,6 @@ fn setup(
     }));
 
     // materials
-    // parameters.default_particle_material =
-    //     materials.add(Color::rgb(0.4, 0.4, 0.4).into());
     parameters.default_particle_material =
         materials.add(Color::rgb(0.3, 0.1, 0.1).into());
 
@@ -166,24 +150,6 @@ fn setup(
             })
             .id(),
     );
-
-    // container
-    // let container_collider = container_collider(&parameters);
-    // let container_mesh = container_mesh(&parameters);
-
-    // let container = commands.spawn((
-    //     container_collider,
-    //     meshes.add(container_mesh),
-    //     materials.add(Color::rgba(0.8, 0.8, 0.8, 0.2).into()),
-    //     TransformBundle::from_transform(Transform::from_xyz(
-    //         parameters.dimx,
-    //         parameters.dimy,
-    //         parameters.dimz,
-    //     )),
-    //     Visibility::default(),
-    //     ComputedVisibility::default(),
-    // ));
-    // entities.0.push(container.id());
 
     // directional 'sun' light
     let sunlight = commands.spawn(DirectionalLightBundle {
@@ -245,7 +211,10 @@ fn update(
             .spawn_particles_num
             .min(parameters.max_entities - parameters.number_of_particles)
         {
-            let particle = commands.spawn(particle(&parameters, &mut rng));
+            let particle = commands.spawn((
+                Particle,
+                randomly_placed_particle(&parameters, &mut rng),
+            ));
             entities.0.push(particle.id());
         }
     }
@@ -314,128 +283,21 @@ fn cleanup(
     *rapier_config = RapierConfiguration::default();
 }
 
-fn particle(
+fn randomly_placed_particle(
     parameters: &ParticleMessParameters,
     rng: &mut ThreadRng,
-) -> ParticleBundle {
+) -> BallBundle {
     let x: f32 = rng.gen_range(0.001..parameters.dimx * 1.99);
     let y: f32 = rng.gen_range(0.001..parameters.dimy * 1.99);
     let z: f32 = rng.gen_range(0.001..parameters.dimz * 1.99);
-    let translation = Vec3::new(x, y, z);
 
-    ParticleBundle {
-        pbr_bundle: PbrBundle {
-            mesh: parameters.particle_mesh.clone(),
-            material: parameters.default_particle_material.clone(),
-            transform: Transform::from_translation(translation),
-            ..default()
-        },
-        collider: Collider::ball(parameters.particle_radius),
-        rigid_body: RigidBody::Dynamic,
-        restitution: Restitution::coefficient(
-            parameters.restitution_coefficient,
-        ),
-        ..default()
-    }
-}
+    let mut particle =
+        BallBundle::new_from_xyz(x, y, z, parameters.particle_radius);
 
-fn container_collider(parameters: &ParticleMessParameters) -> Collider {
-    let panel_thickness = parameters.particle_radius * 40.0;
-    // parameters.dimx.max(parameters.dimy).max(parameters.dimz) / 10.0;
+    particle.restitution =
+        Restitution::coefficient(parameters.restitution_coefficient);
 
-    let collider_xz = Collider::cuboid(
-        parameters.dimx + panel_thickness,
-        panel_thickness + panel_thickness,
-        parameters.dimz + panel_thickness,
-    );
-    let collider_xy = Collider::cuboid(
-        parameters.dimx + panel_thickness,
-        parameters.dimy + panel_thickness,
-        panel_thickness + panel_thickness,
-    );
-    let collider_zy = Collider::cuboid(
-        panel_thickness + panel_thickness,
-        parameters.dimy + panel_thickness,
-        parameters.dimz + panel_thickness,
-    );
-
-    let p_bottom =
-        Vec3::new(0.0, -parameters.dimy - 2.0 * panel_thickness, 0.0);
-    let p_top = Vec3::new(0.0, parameters.dimy + 2.0 * panel_thickness, 0.0);
-    let p_left = Vec3::new(0.0, 0.0, -parameters.dimz - 2.0 * panel_thickness);
-    let p_right = Vec3::new(0.0, 0.0, parameters.dimz + 2.0 * panel_thickness);
-    let p_near = Vec3::new(-parameters.dimx - 2.0 * panel_thickness, 0.0, 0.0);
-    let p_far = Vec3::new(parameters.dimx + 2.0 * panel_thickness, 0.0, 0.0);
-
-    Collider::compound(vec![
-        (p_bottom, Quat::IDENTITY, collider_xz.clone()),
-        (p_top, Quat::IDENTITY, collider_xz),
-        (p_left, Quat::IDENTITY, collider_xy.clone()),
-        (p_right, Quat::IDENTITY, collider_xy),
-        (p_near, Quat::IDENTITY, collider_zy.clone()),
-        (p_far, Quat::IDENTITY, collider_zy),
-    ])
-}
-
-fn container_mesh(parameters: &ParticleMessParameters) -> Mesh {
-    Mesh::from(Box::new(
-        parameters.dimx * 2.0,
-        parameters.dimy * 2.0,
-        parameters.dimz * 2.0,
-    ))
-}
-
-fn rect(xyz: Vec3) -> (Box, Collider) {
-    (
-        shape::Box::new(xyz.x * 2.0, xyz.y * 2.0, xyz.z * 2.0),
-        Collider::cuboid(xyz.x, xyz.y, xyz.z),
-    )
-}
-
-fn bowl(
-    material: Handle<StandardMaterial>,
-) -> (
-    TransformBundle,
-    Collider,
-    Handle<StandardMaterial>,
-    Visibility,
-    ComputedVisibility,
-) {
-    let mut vertices: Vec<Vec3> = Vec::new();
-    let mut indices: Vec<[u32; 3]> = Vec::new();
-
-    let segments = 32;
-    let bowl_size = Vec3::new(10.0, 3.0, 10.0);
-
-    for ix in 0..=segments {
-        for iz in 0..=segments {
-            let shifted_z = (iz as f32 / segments as f32 - 0.5) * 2.0;
-            let shifted_x = (ix as f32 / segments as f32 - 0.5) * 2.0;
-            let clamped_radius =
-                (shifted_z.powi(2) + shifted_x.powi(2)).sqrt().min(1.0);
-            let x = shifted_x * bowl_size.x / 2.0;
-            let z = shifted_z * bowl_size.z / 2.0;
-            let y =
-                ((clamped_radius - 0.5) * TAU / 2.0).sin() * bowl_size.y / 2.0;
-            vertices.push(Vec3::new(x, y, z));
-        }
-    }
-    for ix in 0..segments {
-        for iz in 0..segments {
-            let row0 = ix * (segments + 1);
-            let row1 = (ix + 1) * (segments + 1);
-            indices.push([row0 + iz, row0 + iz + 1, row1 + iz]);
-            indices.push([row1 + iz, row0 + iz + 1, row1 + iz + 1]);
-        }
-    }
-
-    (
-        TransformBundle::from(Transform::from_translation(bowl_size / 2.0)),
-        Collider::trimesh(vertices, indices),
-        material,
-        Visibility::default(),
-        ComputedVisibility::default(),
-    )
+    particle
 }
 
 // ui
@@ -445,7 +307,7 @@ pub fn show_ui(
     parameters: &mut ParticleMessParameters,
     rapier_debug_config: &mut DebugRenderContext,
 ) {
-    ui.allocate_space(egui::Vec2::new(1.0, 10.0));
+    ui.allocate_space(egui::vec2(1.0, 10.0));
 
     ui.add(
         egui::Slider::new(&mut parameters.max_entities, 0..=10000)

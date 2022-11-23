@@ -8,7 +8,11 @@ use bevy_rapier3d::render::DebugRenderContext;
 use crate::longitudinal_wave_3d_simulation::LongitudinalWave3dSimulationParameters;
 use crate::particle_mess::{self, ParticleMessParameters};
 use crate::wave_2d_simulation::Wave2dSimulationParameters;
-use crate::{longitudinal_wave_3d_simulation, wave_2d_simulation, AppState};
+use crate::wave_in_panel::WaveInPanelParameters;
+use crate::{
+    longitudinal_wave_3d_simulation, wave_2d_simulation, wave_in_panel,
+    AppState,
+};
 
 pub struct UiPlugin;
 
@@ -49,6 +53,7 @@ fn show_ui(
     mut ui_state: ResMut<UiState>,
     mut app_state: ResMut<State<AppState>>,
     diagnostics: Res<Diagnostics>,
+    mut rapier_debug_config: ResMut<DebugRenderContext>,
     mut wave_2d_parameters: ResMut<Wave2dSimulationParameters>,
     wave_2d_events: EventWriter<wave_2d_simulation::UiEvents>,
     mut longitudinal_wave_3d_parameters: ResMut<
@@ -58,7 +63,8 @@ fn show_ui(
         longitudinal_wave_3d_simulation::UiEvents,
     >,
     mut particle_mess_parameters: ResMut<ParticleMessParameters>,
-    mut rapier_debug_config: ResMut<DebugRenderContext>,
+    wave_in_panel_events: EventWriter<wave_in_panel::UiEvents>,
+    mut wave_in_panel_parameters: ResMut<WaveInPanelParameters>,
 ) {
     egui::TopBottomPanel::top("top_panel")
         .resizable(false)
@@ -109,6 +115,14 @@ fn show_ui(
                         &mut rapier_debug_config,
                     );
                 }
+                AppState::WaveInPanel => {
+                    wave_in_panel::show_ui(
+                        ui,
+                        &mut rapier_debug_config,
+                        wave_in_panel_events,
+                        &mut wave_in_panel_parameters,
+                    );
+                }
             }
 
             // debug info
@@ -136,7 +150,12 @@ fn select_simulation(ui: &mut egui::Ui, app_state: &mut State<AppState>) {
                 &mut current_state,
                 AppState::ParticleMess,
                 String::from(AppState::ParticleMess),
-            )
+            );
+            ui.selectable_value(
+                &mut current_state,
+                AppState::WaveInPanel,
+                String::from(AppState::WaveInPanel),
+            );
         });
     if current_state != *app_state.current() {
         app_state.set(current_state).unwrap();
