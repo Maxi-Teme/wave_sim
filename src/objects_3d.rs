@@ -185,7 +185,7 @@ pub fn spawn_koordinate_system_helper(
     });
     // z blue
     commands.spawn(PbrBundle {
-        mesh: debug_mesh.clone(),
+        mesh: debug_mesh,
         material: materials.add(Color::BLUE.into()),
         transform: Transform::from_xyz(0.0, 0.0, 1.0),
         ..default()

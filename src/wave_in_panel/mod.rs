@@ -91,6 +91,7 @@ impl Plugin for WaveInPanelPlugin {
 
 // setup
 
+#[allow(clippy::too_many_arguments)]
 fn setup(
     mut time: ResMut<Time>,
     mut commands: Commands,

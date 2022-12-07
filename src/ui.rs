@@ -10,8 +10,8 @@ use crate::particle_mess::ParticleMessParameters;
 use crate::wave_2d_simulation::Wave2dSimulationParameters;
 use crate::wave_in_panel::WaveInPanelParameters;
 use crate::{
-    longitudinal_wave_3d_simulation, wave_2d_simulation, wave_in_panel, particle_mess,
-    AppState,
+    longitudinal_wave_3d_simulation, particle_mess, wave_2d_simulation,
+    wave_in_panel, AppState,
 };
 
 pub struct UiPlugin;

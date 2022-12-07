@@ -32,7 +32,7 @@ pub fn update_pan_orbit_camera(
 
     let mut pan = Vec2::ZERO;
     let mut rotation_move = Vec2::ZERO;
-    let mut scroll = 0.0;
+    let mut scroll: f32 = 0.0;
     let mut orbit_button_changed = false;
 
     for ev in ev_motion.iter() {
@@ -44,7 +44,11 @@ pub fn update_pan_orbit_camera(
     }
 
     for ev in ev_scroll.iter() {
-        scroll += ev.y;
+        if ev.y > 0.0 {
+            scroll += 1.0;
+        } else if ev.y < 0.0 {
+            scroll -= 1.0;
+        }
     }
 
     if input_mouse.just_released(orbit_button)
@@ -106,7 +110,7 @@ pub fn update_pan_orbit_camera(
             pan_orbit.focus += translation;
         } else if scroll.abs() > 0.0 {
             any = true;
-            pan_orbit.radius -= scroll * pan_orbit.radius * 0.2;
+            pan_orbit.radius -= scroll * pan_orbit.radius * 0.05;
             // dont allow zoom to reach zero or you get stuck
             pan_orbit.radius = pan_orbit.radius.clamp(0.05, 1000.0);
         }

@@ -95,6 +95,7 @@ impl Plugin for ParticleMessPlugin {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn setup(
     mut commands: Commands,
     cameras: Query<Entity, With<AppCamera>>,
