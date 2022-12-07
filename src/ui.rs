@@ -6,11 +6,11 @@ use bevy_egui::{egui, EguiContext, EguiPlugin};
 use bevy_rapier3d::render::DebugRenderContext;
 
 use crate::longitudinal_wave_3d_simulation::LongitudinalWave3dSimulationParameters;
-use crate::particle_mess::{self, ParticleMessParameters};
+use crate::particle_mess::ParticleMessParameters;
 use crate::wave_2d_simulation::Wave2dSimulationParameters;
 use crate::wave_in_panel::WaveInPanelParameters;
 use crate::{
-    longitudinal_wave_3d_simulation, wave_2d_simulation, wave_in_panel,
+    longitudinal_wave_3d_simulation, wave_2d_simulation, wave_in_panel, particle_mess,
     AppState,
 };
 
@@ -63,8 +63,9 @@ fn show_ui(
         longitudinal_wave_3d_simulation::UiEvents,
     >,
     mut particle_mess_parameters: ResMut<ParticleMessParameters>,
-    wave_in_panel_events: EventWriter<wave_in_panel::UiEvents>,
+    particle_mess_events: EventWriter<particle_mess::UiEvents>,
     mut wave_in_panel_parameters: ResMut<WaveInPanelParameters>,
+    wave_in_panel_events: EventWriter<wave_in_panel::UiEvents>,
 ) {
     egui::TopBottomPanel::top("top_panel")
         .resizable(false)
@@ -106,13 +107,15 @@ fn show_ui(
                         &mut app_state,
                         &mut longitudinal_wave_3d_parameters,
                         longitudinal_wave_3d_events,
+                        &mut rapier_debug_config,
                     );
                 }
                 AppState::ParticleMess => {
                     particle_mess::show_ui(
                         ui,
-                        &mut particle_mess_parameters,
                         &mut rapier_debug_config,
+                        particle_mess_events,
+                        &mut particle_mess_parameters,
                     );
                 }
                 AppState::WaveInPanel => {

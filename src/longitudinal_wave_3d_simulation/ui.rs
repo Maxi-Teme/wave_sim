@@ -1,5 +1,6 @@
 use bevy::prelude::*;
 use bevy_egui::egui;
+use bevy_rapier3d::render::DebugRenderContext;
 
 use crate::AppState;
 
@@ -15,6 +16,7 @@ pub fn show_ui(
     _app_state: &mut State<AppState>,
     parameters: &mut LongitudinalWave3dSimulationParameters,
     mut ui_events: EventWriter<UiEvents>,
+    rapier_debug_config: &mut DebugRenderContext,
 ) {
     ui.allocate_space(egui::Vec2::new(1.0, 10.0));
 
@@ -50,4 +52,11 @@ pub fn show_ui(
             ui_events.send(UiEvents::Reset);
         }
     });
+
+    ui.separator();
+
+    ui.add(egui::Checkbox::new(
+        &mut rapier_debug_config.enabled,
+        "rapier debug",
+    ));
 }

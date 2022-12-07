@@ -50,16 +50,16 @@ impl Default for WaveInPanelParameters {
             particles_map: HashMap::<Entity, Vec<Entity>>::default(),
 
             // initially fixed parameters
-            dimx: 27.0,
-            dimy: 14.0,
+            dimx: 14.0,
+            dimy: 8.0,
             dimz: 0.0,
             particle_radius: 0.1,
 
             // dynamically applicable parameters
-            equalizing_force_factor: 0.2,
+            equalizing_force_factor: 2.0,
             applying_force_frequency: 3.5,
-            applying_force_factor: 0.4,
-            sysnthetic_energy_loss_factor: 0.999,
+            applying_force_factor: 0.1,
+            sysnthetic_energy_loss_factor: 0.997,
         }
     }
 }
@@ -113,7 +113,7 @@ fn setup(
     // mesh
     parameters.particle_mesh_handle =
         meshes.add(Mesh::from(shape::Icosphere {
-            radius: parameters.particle_radius * 1.1,
+            radius: parameters.particle_radius * 1.3,
             subdivisions: 1,
         }));
 
@@ -209,7 +209,7 @@ fn spawn_particles(
 }
 
 fn store_nearby_particles(
-    entities_and_positions: &Vec<(Entity, Vec3)>,
+    entities_and_positions: &[(Entity, Vec3)],
     parameters: &mut WaveInPanelParameters,
 ) {
     for combinations in entities_and_positions.iter().combinations(2) {
@@ -248,35 +248,32 @@ fn apply_synthetic_energy_loss(
 
 fn update_equalizing_forces(
     parameters: Res<WaveInPanelParameters>,
-    mut particles: Query<(Entity, &Particle, &mut Velocity)>,
+    mut particles: Query<(Entity, &Particle, &Transform, &mut Velocity)>,
     particles_transforms: Query<&Transform, With<Particle>>,
 ) {
-    for (entity, particle, mut velocity) in particles.iter_mut() {
-        let transform = particles_transforms.get(entity).unwrap();
+    for (entity, particle, transform, mut velocity) in particles.iter_mut() {
+        if let Particle::Active = particle {
+            continue;
+        }
 
-        if let Particle::Passive = particle {
-            let neighbors = if let Some(neighbors) =
-                parameters.particles_map.get(&entity)
-            {
+        let neighbors =
+            if let Some(neighbors) = parameters.particles_map.get(&entity) {
                 neighbors
             } else {
                 continue;
             };
 
-            for neighbor in neighbors.iter() {
-                let neighbour_transform =
-                    if let Ok(t) = particles_transforms.get(*neighbor) {
-                        t
-                    } else {
-                        continue;
-                    };
-
+        for neighbor in neighbors.iter() {
+            if let Ok(neighbour_transform) = particles_transforms.get(*neighbor)
+            {
                 let equalizing_force = (neighbour_transform.translation
                     - transform.translation)
                     * Vec3::new(0.0, 0.0, parameters.equalizing_force_factor);
 
                 velocity.linvel += equalizing_force;
-            }
+            } else {
+                continue;
+            };
         }
     }
 }
@@ -420,33 +417,33 @@ pub fn show_ui(
     mut ui_events: EventWriter<UiEvents>,
     parameters: &mut WaveInPanelParameters,
 ) {
-    // ui.allocate_space(egui::vec2(1.0, 10.0));
+    ui.allocate_space(egui::vec2(1.0, 10.0));
 
     ui.label("equalizing force factor");
     ui.add(
-        egui::Slider::new(&mut parameters.equalizing_force_factor, 0.0..=2.0)
+        egui::Slider::new(&mut parameters.equalizing_force_factor, 0.0..=10.0)
             .step_by(0.1),
     );
 
     ui.label("applying force frequency in Hz");
     ui.add(
-        egui::Slider::new(&mut parameters.applying_force_frequency, 0.0..=10.0)
-            .step_by(0.5),
+        egui::Slider::new(&mut parameters.applying_force_frequency, 0.0..=20.0)
+            .step_by(0.1),
     );
 
     ui.label("applying force factor");
     ui.add(
-        egui::Slider::new(&mut parameters.applying_force_factor, 0.0..=2.0)
-            .step_by(0.1),
+        egui::Slider::new(&mut parameters.applying_force_factor, 0.0..=0.4)
+            .step_by(0.01),
     );
 
     ui.label("synthetic velocity loss factor:");
     ui.add(
         egui::Slider::new(
             &mut parameters.sysnthetic_energy_loss_factor,
-            0.95..=1.0,
+            0.5..=1.0,
         )
-        .step_by(0.001),
+        .step_by(0.01),
     );
 
     ui.horizontal(|ui| {

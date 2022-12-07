@@ -74,7 +74,8 @@ pub struct ParticleMessPlugin;
 
 impl Plugin for ParticleMessPlugin {
     fn build(&self, app: &mut App) {
-        app.insert_resource(Entities::default())
+        app.add_event::<UiEvents>()
+            .insert_resource(Entities::default())
             .insert_resource(ParticleMessParameters::default())
             .insert_resource(ParticleMessStopwatch::default())
             .add_system_set(
@@ -238,7 +239,6 @@ fn apply_gravity(
 
 fn apply_heat(
     parameters: Res<ParticleMessParameters>,
-    // mut particles: Query<&mut ExternalForce, With<Particle>>,
     mut particles: Query<&mut ExternalImpulse, With<Particle>>,
 ) {
     let mut rng = rand::thread_rng();
@@ -297,15 +297,24 @@ fn randomly_placed_particle(
     particle.restitution =
         Restitution::coefficient(parameters.restitution_coefficient);
 
+    particle.pbr.mesh = parameters.particle_mesh.clone();
+    particle.pbr.material = parameters.default_particle_material.clone();
+
     particle
+}
+
+pub enum UiEvents {
+    StartStopTime,
+    Reset,
 }
 
 // ui
 
 pub fn show_ui(
     ui: &mut egui::Ui,
-    parameters: &mut ParticleMessParameters,
     rapier_debug_config: &mut DebugRenderContext,
+    mut ui_events: EventWriter<UiEvents>,
+    parameters: &mut ParticleMessParameters,
 ) {
     ui.allocate_space(egui::vec2(1.0, 10.0));
 
@@ -361,6 +370,15 @@ pub fn show_ui(
         )
         .step_by(0.0001),
     );
+
+    ui.horizontal(|ui| {
+        if ui.button("Start / Stop time").clicked() {
+            ui_events.send(UiEvents::StartStopTime);
+        }
+        if ui.button("Reset").clicked() {
+            ui_events.send(UiEvents::Reset);
+        }
+    });
 
     ui.separator();
 
