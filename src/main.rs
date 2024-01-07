@@ -30,7 +30,7 @@ pub enum AppState {
 
 impl AppState {
     fn start() -> Self {
-        Self::Wave2dSimulation
+        Self::WaveInPanel
     }
 }
 

@@ -93,7 +93,6 @@ impl Plugin for WaveInPanelPlugin {
 
 #[allow(clippy::too_many_arguments)]
 fn setup(
-    mut time: ResMut<Time>,
     mut commands: Commands,
     cameras: Query<Entity, With<AppCamera>>,
     mut meshes: ResMut<Assets<Mesh>>,
@@ -105,7 +104,6 @@ fn setup(
     rapier_debug_config.enabled = false;
     rapier_config.gravity = Vec3::ZERO;
     rapier_config.scaled_shape_subdivision = 1;
-    time.pause();
 
     if let Ok(camera_entity) = cameras.get_single() {
         commands.entity(camera_entity).despawn();
